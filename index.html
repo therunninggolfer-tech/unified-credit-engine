@@ -818,40 +818,97 @@ function renderUpload() {
     </div>
   </div>
 
-  <!-- Deal Context -->
+  <!-- Deal Context via Monday API -->
   <div class="card">
-    <div class="card-header"><h2>Monday Deal Context (optional)</h2><span style="font-size:11px;color:#6b7280">Supplier grade, period, recourse, equipment</span></div>
+    <div class="card-header"><h2>Monday Deal Context</h2><span style="font-size:11px;color:#6b7280;background:#dbeafe;border-radius:4px;padding:2px 8px;font-weight:600">Optional — All Tiers</span></div>
     <div class="card-body">
-      <p style="font-size:12px;color:#6b7280;margin-bottom:12px">Enter deal details from Monday Applications 2026 board. These feed directly into the credit decision — supplier grade and recourse are meaningful mitigants.</p>
+      <p style="font-size:12px;color:#6b7280;margin-bottom:12px">Search Applications 2026 board to pull supplier risk grade, period, recourse, and equipment — these feed directly into the credit decision.</p>
+
       ${!S.dealCtx ? `
-        <div class="grid-2" style="margin-bottom:12px">
-          <div class="form-group">
-            <label>Supplier Risk Grade</label>
-            <select onchange="S._dc=S._dc||{};S._dc.riskGrade=this.value">
-              <option value="">— Select —</option>
-              ${['A','B+','B','B-','C','D'].map(g=>`<option>${g}</option>`).join('')}
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Rental Period (months)</label>
-            <input type="number" placeholder="e.g. 60" oninput="S._dc=S._dc||{};S._dc.period=this.value+' months'">
-          </div>
-        </div>
+        <!-- Token -->
         <div class="form-group">
-          <label>Equipment Description</label>
-          <input type="text" placeholder="e.g. 1 x A4 Colour MFP" oninput="S._dc=S._dc||{};S._dc.equipment=this.value">
+          <input type="password" value="${S.mondayToken||''}" placeholder="Monday.com API token" oninput="S.mondayToken=this.value;try{sessionStorage.setItem('ccf_monday_token',this.value)}catch(e){}">
         </div>
-        <div class="form-group">
-          <label>Approval Terms / Recourse</label>
-          <input type="text" placeholder="e.g. Supplier Recourse, 10% deposit" oninput="S._dc=S._dc||{};S._dc.approvalTerms=this.value">
+
+        <!-- URL / Item ID fetch -->
+        <div style="display:flex;gap:8px;margin-bottom:6px">
+          <input type="text" id="monday-id-input" placeholder="Paste Monday deal URL or item ID..." style="flex:1" oninput="S._mondayIdInput=this.value" onkeydown="if(event.key==='Enter')fetchMondayDeal()">
+          <button class="btn btn-primary" onclick="fetchMondayDeal()" style="white-space:nowrap">Fetch →</button>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="if(S._dc){S.dealCtx=S._dc;S._dc=null;render();}">Confirm Deal Context</button>
-        <button class="btn btn-outline btn-sm" style="margin-left:8px" onclick="S.dealCtx=null;S._dc=null;render()">Skip</button>
+        <div style="font-size:11px;color:#9ca3af;margin-bottom:12px">e.g. https://customcapital.monday.com/boards/18393867301/pulses/12333160286</div>
+
+        ${S.dealFetchError ? `<div class="alert alert-red" style="margin-bottom:10px">${S.dealFetchError}</div>` : ''}
+        ${S.dealSearching ? '<div style="font-size:12px;color:var(--teal);margin-bottom:10px">⏳ Fetching from Monday...</div>' : ''}
+
+        <!-- Name search fallback -->
+        <div style="border-top:1px solid #e2e8f0;padding-top:12px;margin-top:4px">
+          <div style="font-size:11px;color:#6b7280;margin-bottom:6px;font-weight:600">Or search by client name:</div>
+          <input type="text" value="${S.dealSearch||''}" placeholder="Or search by client name..." oninput="S.dealSearch=this.value;searchMondayDeals(this.value)">
+        </div>
+
+        ${(S.dealResults||[]).length > 0 ? `
+          <div style="background:white;border:1px solid #93c5fd;border-radius:6px;overflow:hidden;box-shadow:0 2px 8px rgba(3,105,161,0.08);margin-top:8px">
+            ${S.dealResults.map((d,i) => {
+              const gradeCol = {A:'#059669','B+':'#059669',B:'#0369a1','B-':'#d97706',C:'#d97706',D:'#dc2626'}[d.riskGrade] || '#6b7280';
+              const hasRecourse = /recourse/i.test(d.approvalTerms||'');
+              return `<div onclick="selectDeal(${i})" style="padding:10px 14px;border-bottom:${i<S.dealResults.length-1?'1px solid #dbeafe':'none'};cursor:pointer" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='white'">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                  <div>
+                    <span style="font-weight:700;color:#1f2937;font-size:13px">${d.client}</span>
+                    <span style="margin-left:8px;font-size:11px;color:#6b7280">${d.itemName||''}</span>
+                  </div>
+                  <div style="display:flex;gap:5px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+                    ${d.riskGrade?`<span style="font-size:11px;font-weight:700;color:white;background:${gradeCol};border-radius:3px;padding:1px 7px">Grade ${d.riskGrade}</span>`:''}
+                    ${hasRecourse?'<span style="font-size:10px;color:#059669;font-weight:700;background:#d1fae5;border:1px solid #6ee7b7;border-radius:3px;padding:1px 6px">🛡 Recourse</span>':''}
+                    ${d.dealStatus?`<span style="font-size:10px;color:#6b7280;background:#f1f5f9;border-radius:3px;padding:1px 6px">${d.dealStatus}</span>`:''}
+                  </div>
+                </div>
+                <div style="margin-top:4px;display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#6b7280">
+                  ${d.equipment?`<span>🔧 ${d.equipment.substring(0,45)}${d.equipment.length>45?'...':''}</span>`:''}
+                  ${d.period?`<span>⏱ ${d.period}</span>`:''}
+                  ${d.rental?`<span>💰 ${d.rental}</span>`:''}
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        ` : S.dealSearch && S.dealSearch.length >= 2 && !S.dealSearching && S.mondayToken ? `
+          <div style="font-size:12px;color:#6b7280;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;margin-top:8px">No deals found for "${S.dealSearch}".</div>
+        ` : ''}
+
+        <div style="margin-top:10px;font-size:11px;text-align:right">
+          <a href="#" onclick="S.dealCtx={};S.dealSearch='';S.dealResults=[];render();return false" style="color:#9ca3af;text-decoration:underline">Skip — no Monday deal linked</a>
+        </div>
       ` : `
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
-          ${[['Supplier Risk Grade',S.dealCtx.riskGrade],['Period',S.dealCtx.period],['Equipment',S.dealCtx.equipment],['Recourse',/recourse/i.test(S.dealCtx.approvalTerms||'')?'✓ Yes':'Not confirmed']].filter(f=>f[1]).map(([l,v])=>`<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;font-weight:600">${l}</div><div style="font-size:13px;font-weight:700;color:#1f2937">${v}</div></div>`).join('')}
+        <!-- Deal selected -->
+        <div style="background:white;border:1px solid #93c5fd;border-radius:8px;padding:14px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+            <div>
+              <div style="font-size:11px;color:#0369a1;font-weight:600;margin-bottom:2px">MONDAY DEAL CONTEXT</div>
+              <div style="font-weight:700;font-size:14px;color:#1f2937">${S.dealCtx.client||'Deal loaded'}</div>
+              <div style="font-size:12px;color:#6b7280">${S.dealCtx.itemName||''}</div>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="S.dealCtx=null;S.dealSearch='';S.dealResults=[];S.dealFetchError='';render()">Change</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
+            ${[
+              ['Supplier Risk Grade', S.dealCtx.riskGrade, true],
+              ['Period', S.dealCtx.period, false],
+              ['Rental on Deal', S.dealCtx.rental, false],
+              ['Equipment', S.dealCtx.equipment, false],
+              ['Recourse', /recourse/i.test(S.dealCtx.approvalTerms||'')?'✓ Confirmed':'Not confirmed', false],
+              ['Evidence Tier', S.dealCtx.evidenceTier, false],
+              ['Financial Strength', S.dealCtx.financialStrength, false],
+              ['BDO', S.dealCtx.bdo, false],
+            ].filter(f=>f[1]).map(([l,v,hi])=>{
+              const gradeColors={A:'#d1fae5','B+':'#d1fae5',B:'#dbeafe','B-':'#fef3c7',C:'#fef3c7',D:'#fee2e2'};
+              const bg = hi ? (gradeColors[(v||'').toUpperCase().trim()]||'#f8fafc') : '#f8fafc';
+              return `<div style="background:${bg};border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px">
+                <div style="font-size:10px;color:#6b7280;font-weight:600">${l}</div>
+                <div style="font-size:13px;font-weight:${hi?800:600};color:#1f2937">${v}</div>
+              </div>`;
+            }).join('')}
+          </div>
         </div>
-        <button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="S.dealCtx=null;render()">Change</button>
       `}
     </div>
   </div>
@@ -1059,8 +1116,140 @@ function downloadDocx() {
   URL.revokeObjectURL(url);
 }
 
-// ── INIT ──
-render();
+// ═══════════════════════════════════════════════════════════════
+// MONDAY DEAL SEARCH
+// ═══════════════════════════════════════════════════════════════
+// Add to state initialisation — these run after S is defined:
+S.mondayToken = sessionStorage.getItem('ccf_monday_token') || '';
+S.dealSearch = '';
+S.dealResults = [];
+S.dealSearching = false;
+S.dealFetchError = '';
+S._mondayIdInput = '';
+let _dealSearchTimer = null;
+
+async function fetchMondayDeal() {
+  const raw = (S._mondayIdInput || document.getElementById('monday-id-input')?.value || '').trim();
+  if (!raw) { S.dealFetchError = 'Please paste a Monday deal URL or item ID.'; render(); return; }
+  if (!S.mondayToken) { S.dealFetchError = 'Monday API token required.'; render(); return; }
+
+  // Extract item ID from URL or use directly
+  let itemId = raw;
+  const urlMatch = raw.match(/pulses\/(\d+)/);
+  if (urlMatch) itemId = urlMatch[1];
+  if (!/^\d+$/.test(itemId)) { S.dealFetchError = 'Could not extract a valid item ID from the input.'; render(); return; }
+
+  S.dealSearching = true; S.dealFetchError = ''; render();
+  try {
+    const query = `query ($itemId: ID!) {
+      items(ids: [$itemId]) {
+        id name
+        column_values(ids: [
+          "text_mm2m4nbb","email_mm2fr2bd","color_mm3k88ck","color_mm3kdj5v",
+          "long_text_mm31hyds","long_text_mm323dd9","long_text_mm3258wv",
+          "long_text_mm3263ks","dropdown_mm315mbh","color_mm0m3dyd","status27",
+          "multiple_person_mm25xn8q","registration_no_"
+        ]) { id text }
+      }
+    }`;
+    const res = await fetch('https://api.monday.com/v2', {
+      method: 'POST',
+      headers: { 'Authorization': S.mondayToken, 'Content-Type': 'application/json', 'API-Version': '2024-01' },
+      body: JSON.stringify({ query, variables: { itemId } })
+    });
+    const data = await res.json();
+    const item = data.data?.items?.[0];
+    if (!item) { S.dealFetchError = `No item found with ID ${itemId}. Check the URL/ID and try again.`; S.dealSearching = false; render(); return; }
+    const col = id => item.column_values.find(c => c.id === id)?.text || '';
+    S.dealCtx = {
+      id: item.id,
+      itemName: item.name,
+      client: col('text_mm2m4nbb'),
+      supplierEmail: col('email_mm2fr2bd'),
+      riskGrade: col('color_mm3k88ck'),
+      financialStrength: col('color_mm3kdj5v'),
+      equipment: col('long_text_mm31hyds'),
+      rental: col('long_text_mm323dd9'),
+      period: col('long_text_mm3258wv'),
+      escalation: col('long_text_mm3263ks'),
+      approvalTerms: col('dropdown_mm315mbh'),
+      evidenceTier: col('color_mm0m3dyd'),
+      dealStatus: col('status27'),
+      bdo: col('multiple_person_mm25xn8q'),
+      regNo: col('registration_no_'),
+    };
+    // Auto-populate entity name if not set
+    if (!S.entity && S.dealCtx.client) S.entity = S.dealCtx.client;
+    // Auto-populate rental if not set
+    if (!S.rental && S.dealCtx.rental) {
+      const r = parseFloat(S.dealCtx.rental.replace(/[^0-9.]/g,''));
+      if (!isNaN(r) && r > 0) S.rental = String(r);
+    }
+    S.dealResults = [];
+  } catch (e) {
+    S.dealFetchError = 'Monday API error: ' + e.message;
+  }
+  S.dealSearching = false; render();
+}
+  clearTimeout(_dealSearchTimer);
+  if (!term || term.length < 2 || !S.mondayToken) { S.dealResults = []; render(); return; }
+  _dealSearchTimer = setTimeout(() => _doMondaySearch(term), 400);
+}
+
+async function _doMondaySearch(term) {
+  S.dealSearching = true; render();
+  try {
+    const query = `query ($boardId: ID!, $term: CompareValue!) {
+      boards(ids: [$boardId]) {
+        items_page(limit: 30, query_params: {
+          rules: [{ column_id: "text_mm2m4nbb", compare_value: $term, operator: contains_text }]
+        }) {
+          items {
+            id name
+            column_values(ids: [
+              "text_mm2m4nbb","email_mm2fr2bd","color_mm3k88ck","color_mm3kdj5v",
+              "long_text_mm31hyds","long_text_mm323dd9","long_text_mm3258wv",
+              "long_text_mm3263ks","dropdown_mm315mbh","color_mm0m3dyd","status27"
+            ]) { id text }
+          }
+        }
+      }
+    }`;
+    const res = await fetch('https://api.monday.com/v2', {
+      method: 'POST',
+      headers: { 'Authorization': S.mondayToken, 'Content-Type': 'application/json', 'API-Version': '2024-01' },
+      body: JSON.stringify({ query, variables: { boardId: '18393867301', term } })
+    });
+    const data = await res.json();
+    const items = data.data?.boards?.[0]?.items_page?.items || [];
+    const col = (item, id) => item.column_values.find(c => c.id === id)?.text || '';
+    S.dealResults = items.map(item => ({
+      id: item.id, itemName: item.name,
+      client: col(item,'text_mm2m4nbb'),
+      supplierEmail: col(item,'email_mm2fr2bd'),
+      riskGrade: col(item,'color_mm3k88ck'),
+      financialStrength: col(item,'color_mm3kdj5v'),
+      equipment: col(item,'long_text_mm31hyds'),
+      rental: col(item,'long_text_mm323dd9'),
+      period: col(item,'long_text_mm3258wv'),
+      escalation: col(item,'long_text_mm3263ks'),
+      approvalTerms: col(item,'dropdown_mm315mbh'),
+      evidenceTier: col(item,'color_mm0m3dyd'),
+      dealStatus: col(item,'status27'),
+    })).filter(d => d.client);
+  } catch (e) {
+    console.error('Monday search error:', e);
+    S.dealResults = [];
+  }
+  S.dealSearching = false; render();
+}
+
+function selectDeal(idx) {
+  S.dealCtx = S.dealResults[idx];
+  if (!S.entity) S.entity = S.dealCtx.client;
+  S.dealResults = [];
+  render();
+}
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
