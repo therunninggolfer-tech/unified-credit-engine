@@ -653,7 +653,8 @@ function render() {
   if (S.step === 'loading') { app.innerHTML = renderLoading(); return; }
   if (S.step === 'review') { app.innerHTML = renderReview(); return; }
   app.innerHTML = renderUpload();
-  renderMondaySection();
+  // Defer Monday section render until DOM is painted
+  setTimeout(renderMondaySection, 0);
 }
 
 function renderLoading() {
