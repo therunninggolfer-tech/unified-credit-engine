@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CCF Unified Credit Engine</title>
+<style>
+  :root {
+    --teal: #366775; --gold: #987F40; --mint: #5FC2A2; --light-blue: #6FB9D5;
+    --red: #dc2626; --green: #059669; --amber: #d97706;
+    --red-bg: #fee2e2; --green-bg: #d1fae5; --amber-bg: #fef3c7;
+    --grey: #6b7280; --grey-bg: #f3f4f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Calibri, Arial, sans-serif; background: #f1f5f9; color: #1f2937; min-height: 100vh; }
+
+  /* ── Header ── */
+  .header { background: var(--teal); color: white; padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; }
+  .header h1 { font-size: 20px; font-weight: 700; }
+  .header p { font-size: 12px; color: #a5f3fc; margin-top: 2px; }
+  .api-badge { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+
+  /* ── Layout ── */
+  .container { max-width: 860px; margin: 0 auto; padding: 24px 16px; }
+  .card { background: white; border-radius: 10px; border: 1px solid #e2e8f0; margin-bottom: 16px; overflow: hidden; }
+  .card-header { padding: 14px 18px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+  .card-header h2 { font-size: 14px; font-weight: 700; color: var(--teal); }
+  .card-body { padding: 16px 18px; }
+
+  /* ── Form elements ── */
+  label { display: block; font-size: 12px; font-weight: 700; color: var(--teal); margin-bottom: 4px; }
+  input[type=text], input[type=number], input[type=password], textarea, select {
+    width: 100%; padding: 9px 11px; border: 1px solid #d1d5db; border-radius: 6px;
+    font-size: 13px; font-family: inherit; background: white;
+  }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 2px rgba(54,103,117,0.15); }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  .form-group { margin-bottom: 14px; }
+
+  /* ── Upload zones ── */
+  .upload-zone { border: 2px dashed #d1d5db; border-radius: 8px; padding: 16px; text-align: center; cursor: pointer; background: #fafafa; transition: all 0.2s; }
+  .upload-zone:hover { border-color: var(--teal); background: #f0f9ff; }
+  .upload-zone.loaded { border-color: var(--mint); background: #f0fdf4; }
+  .upload-zone span { font-size: 13px; color: #9ca3af; }
+  .upload-zone.loaded span { color: var(--teal); font-weight: 600; }
+  .file-list { margin-top: 6px; }
+  .file-item { display: flex; justify-content: space-between; align-items: center; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 4px; padding: 4px 8px; margin-top: 4px; font-size: 11px; color: var(--teal); }
+  .file-remove { cursor: pointer; color: var(--red); font-weight: 700; background: none; border: none; font-size: 14px; }
+
+  /* ── Buttons ── */
+  .btn { padding: 10px 20px; border: none; border-radius: 6px; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; transition: opacity 0.15s; }
+  .btn:hover { opacity: 0.88; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: var(--teal); color: white; }
+  .btn-gold { background: var(--gold); color: white; }
+  .btn-outline { background: white; color: var(--teal); border: 2px solid var(--teal); }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+  .btn-full { width: 100%; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+
+  /* ── Asset type toggle ── */
+  .toggle-row { display: flex; gap: 10px; }
+  .toggle-opt { flex: 1; border: 2px solid #d1d5db; border-radius: 8px; padding: 10px 12px; cursor: pointer; }
+  .toggle-opt.active { border-color: var(--teal); background: #f0f9ff; }
+  .toggle-opt .opt-label { font-weight: 700; font-size: 13px; color: #374151; }
+  .toggle-opt.active .opt-label { color: var(--teal); }
+  .toggle-opt .opt-sub { font-size: 11px; color: #6b7280; margin-top: 2px; }
+
+  /* ── Tier badge ── */
+  .tier-banner { border-radius: 7px; padding: 10px 14px; margin-top: 12px; }
+  .tier-1 { background: #d1fae5; border: 1px solid #6ee7b7; }
+  .tier-2 { background: #fef3c7; border: 1px solid #fcd34d; }
+  .tier-3 { background: #dbeafe; border: 1px solid #93c5fd; }
+  .tier-title { font-weight: 700; font-size: 13px; }
+  .tier-1 .tier-title { color: #065f46; }
+  .tier-2 .tier-title { color: #92400e; }
+  .tier-3 .tier-title { color: #1e40af; }
+  .tier-desc { font-size: 12px; margin-top: 3px; }
+  .tier-1 .tier-desc { color: #065f46; }
+  .tier-2 .tier-desc { color: #78350f; }
+  .tier-3 .tier-desc { color: #1e40af; }
+
+  /* ── Bounce selector ── */
+  .bounce-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .bounce-btn { padding: 6px 16px; border-radius: 6px; border: 2px solid #d1d5db; background: white; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .bounce-btn.b0 { border-color: var(--green); background: var(--green-bg); color: #065f46; }
+  .bounce-btn.b1, .bounce-btn.b2 { border-color: var(--amber); background: var(--amber-bg); color: #92400e; }
+  .bounce-btn.b3 { border-color: var(--red); background: var(--red-bg); color: #991b1b; }
+
+  /* ── Traffic light table ── */
+  .tl-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tl-table th { background: var(--teal); color: white; padding: 8px 12px; text-align: left; font-size: 12px; }
+  .tl-table td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  .tl-table tr:last-child td { border-bottom: none; }
+  .tl-table tr:nth-child(even) { background: #f8fafc; }
+
+  /* ── Badges ── */
+  .badge { display: inline-block; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 700; border: 1px solid; }
+  .badge-green { background: var(--green-bg); color: #065f46; border-color: #6ee7b7; }
+  .badge-red { background: var(--red-bg); color: #991b1b; border-color: #fca5a5; }
+  .badge-amber { background: var(--amber-bg); color: #92400e; border-color: #fcd34d; }
+  .badge-grey { background: var(--grey-bg); color: #374151; border-color: #d1d5db; }
+  .badge-blue { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
+
+  /* ── Verdict ── */
+  .verdict-box { border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+  .verdict-approved { background: var(--green-bg); border: 2px solid #6ee7b7; }
+  .verdict-conditions { background: var(--amber-bg); border: 2px solid #fcd34d; }
+  .verdict-deferred { background: #dbeafe; border: 2px solid #93c5fd; }
+  .verdict-declined { background: var(--red-bg); border: 2px solid #fca5a5; }
+  .verdict-label { font-size: 22px; font-weight: 900; }
+  .v-approved .verdict-label { color: var(--green); }
+  .v-conditions .verdict-label { color: var(--amber); }
+  .v-deferred .verdict-label { color: #2563eb; }
+  .v-declined .verdict-label { color: var(--red); }
+  .verdict-meta { font-size: 11px; margin-top: 4px; color: #6b7280; }
+  .conditions-list { margin-top: 10px; padding-left: 18px; }
+  .conditions-list li { font-size: 13px; margin-bottom: 4px; }
+
+  /* ── Flags ── */
+  .flag-item { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 6px; margin-bottom: 6px; }
+  .flag-red { background: var(--red-bg); border: 1px solid #fca5a5; }
+  .flag-amber { background: var(--amber-bg); border: 1px solid #fcd34d; }
+  .flag-green { background: var(--green-bg); border: 1px solid #6ee7b7; }
+  .flag-src { font-size: 11px; font-weight: 700; color: white; border-radius: 3px; padding: 1px 6px; white-space: nowrap; }
+  .src-tu { background: #0369a1; }
+  .src-fin { background: var(--gold); }
+  .src-bank { background: var(--teal); }
+  .src-ccf { background: #7c3aed; }
+  .src-deal { background: #374151; }
+  .flag-text { font-size: 13px; }
+  .flag-red .flag-text { color: #7f1d1d; }
+  .flag-amber .flag-text { color: #78350f; }
+  .flag-green .flag-text { color: #065f46; }
+
+  /* ── Verdict selector ── */
+  .verdict-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .vbtn { flex: 1; min-width: 120px; padding: 10px 8px; border-radius: 7px; font-weight: 700; font-size: 12px; cursor: pointer; border: 2px solid; font-family: inherit; }
+  .vbtn-approved { border-color: #6ee7b7; background: var(--green-bg); color: #065f46; }
+  .vbtn-approved.active { background: var(--green); color: white; }
+  .vbtn-conditions { border-color: #fcd34d; background: var(--amber-bg); color: #92400e; }
+  .vbtn-conditions.active { background: var(--amber); color: white; }
+  .vbtn-deferred { border-color: #93c5fd; background: #dbeafe; color: #1e40af; }
+  .vbtn-deferred.active { background: #2563eb; color: white; }
+  .vbtn-declined { border-color: #fca5a5; background: var(--red-bg); color: #991b1b; }
+  .vbtn-declined.active { background: var(--red); color: white; }
+
+  /* ── Loading ── */
+  .loading { text-align: center; padding: 48px 24px; }
+  .spinner { width: 48px; height: 48px; border: 4px solid var(--light-blue); border-top-color: var(--teal); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading h2 { color: var(--teal); font-size: 18px; margin-bottom: 6px; }
+  .loading p { color: #6b7280; font-size: 14px; }
+
+  /* ── Alert boxes ── */
+  .alert { border-radius: 7px; padding: 10px 14px; font-size: 13px; margin-bottom: 12px; }
+  .alert-red { background: var(--red-bg); border: 1px solid #fca5a5; color: #991b1b; }
+  .alert-amber { background: var(--amber-bg); border: 1px solid #fcd34d; color: #78350f; }
+  .alert-green { background: var(--green-bg); border: 1px solid #6ee7b7; color: #065f46; }
+  .alert-blue { background: #dbeafe; border: 1px solid #93c5fd; color: #1e40af; }
+
+  /* ── API key modal ── */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; }
+  .modal { background: white; border-radius: 12px; padding: 28px; width: 440px; max-width: 95vw; }
+  .modal h2 { color: var(--teal); font-size: 18px; margin-bottom: 8px; }
+  .modal p { font-size: 13px; color: #6b7280; margin-bottom: 16px; }
+
+  /* ── Tabs ── */
+  .section-title { font-weight: 700; color: var(--teal); font-size: 14px; border-bottom: 2px solid var(--gold); padding-bottom: 6px; margin-bottom: 12px; }
+
+  /* ── Synopsis ── */
+  #synopsis-text { width: 100%; min-height: 80px; padding: 9px 11px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; resize: vertical; font-family: inherit; line-height: 1.7; }
+  .char-count { font-size: 10px; color: #9ca3af; text-align: right; margin-top: 3px; }
+
+  /* ── Print ── */
+  @media print { .no-print { display: none !important; } body { background: white; } }
+</style>
+</head>
+<body>
+
+<!-- API Key Modal -->
+<div id="api-modal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <h2>Anthropic API Key</h2>
+    <p>Your key is stored in sessionStorage only — never sent anywhere except directly to Anthropic's API.</p>
+    <div class="form-group">
+      <label>API Key</label>
+      <input type="password" id="api-key-input" placeholder="sk-ant-...">
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn btn-primary" onclick="saveApiKey()">Save & Continue</button>
+      <button class="btn btn-outline" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Header -->
+<div class="header no-print">
+  <div>
+    <h1>CCF Unified Credit Engine</h1>
+    <p>TransUnion · Financials · Bank Statements · Deal Context</p>
+  </div>
+  <button class="api-badge" onclick="showModal()">⚙ API Key</button>
+</div>
+
+<div class="container" id="app"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+const S = {
+  step: 'upload', // upload | loading | review
+  apiKey: sessionStorage.getItem('ccf_unified_key') || '',
+  files: { tu: [], finCur: [], finPri: [], manAccs: [], bank: [] },
+  payout: '', rental: '', assetType: 'non-income', entity: '',
+  bounceCount: 0, bounceSelected: false,
+  exposure: { npv: 0, count: 0, clientName: '' },
+  dealCtx: null,
+  progress: '',
+  tuResult: null, finResult: null, bankResult: null,
+  synopsis: '', verdict: null, verdictNote: '',
+  error: ''
+};
+
+// ═══════════════════════════════════════════════════════════════
+// API KEY
+// ═══════════════════════════════════════════════════════════════
+function showModal() { document.getElementById('api-modal').style.display = 'flex'; document.getElementById('api-key-input').value = S.apiKey; }
+function closeModal() { document.getElementById('api-modal').style.display = 'none'; }
+function saveApiKey() { S.apiKey = document.getElementById('api-key-input').value.trim(); sessionStorage.setItem('ccf_unified_key', S.apiKey); closeModal(); render(); }
+
+// ═══════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════
+const fmt = (n, d=0) => n == null || isNaN(n) ? 'N/A' : Number(n).toLocaleString('en-ZA', {minimumFractionDigits:d, maximumFractionDigits:d});
+const fmtR = n => n == null ? '—' : 'R ' + fmt(n, 2);
+const pct = (a,b) => (!a||!b||b===0) ? null : parseFloat(((a/b)*100).toFixed(1));
+const rat = (a,b) => (!a||!b||b===0) ? null : parseFloat((a/b).toFixed(2));
+
+async function toB64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+async function callClaude(systemPrompt, userContent, maxTokens=4000) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': S.apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: maxTokens, system: systemPrompt, messages: [{ role: 'user', content: userContent }] })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message);
+  return data.content?.find(b => b.type === 'text')?.text || '';
+}
+
+async function parseJson(raw) {
+  let clean = raw.replace(/```json|```/g, '').trim();
+  try { return JSON.parse(clean); } catch {
+    // repair
+    const repaired = await callClaude('Complete this truncated JSON so it is valid. Output ONLY valid JSON, nothing else.', clean);
+    return JSON.parse(repaired.replace(/```json|```/g, '').trim());
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DEAL TIER
+// ═══════════════════════════════════════════════════════════════
+function getTier(payout) {
+  if (!payout || isNaN(payout)) return null;
+  if (payout <= 250000) return 1;
+  if (payout <= 400000) return 2;
+  return 3;
+}
+const TIER_INFO = {
+  1: { label: '≤ R250k', desc: 'TransUnion required. Auto-approve if clean + property. Request bank statements if no property. Decline if adverse.' },
+  2: { label: 'R250k–R400k', desc: 'TransUnion + bank statements required. Financials optional. Decline if TU adverse.' },
+  3: { label: '> R400k', desc: 'TransUnion + financials required. Bank statements strongly preferred. Decline if TU adverse.' }
+};
+
+// ═══════════════════════════════════════════════════════════════
+// EVALUATION FUNCTIONS
+// ═══════════════════════════════════════════════════════════════
+function evalTU(tu) {
+  if (!tu) return { available: false, flags: [], isClean: false, hasProperty: false, hardDecline: false, dirAged: false };
+  const hasProperty = tu.c5_props > 0 || tu.c4_dir_property === 'all' || tu.c4_dir_property === 'one';
+  const hasJudgments = tu.c3_judgments === '2' || tu.c3_judgments === '1';
+  const hasDefaults = tu.c3_defaults === '2' || tu.c3_defaults === '1';
+  const dirJ = tu.c4_judgments === '1' || tu.c4_judgments === '2';
+  const dirD = tu.c4_defaults === '1';
+  const ageLt2 = tu.c1_age < 2;
+  const dirAged = tu.ko_dir_age !== null && tu.ko_dir_age >= 70 && tu.ko_dir_age <= 100;
+  const hardDecline = ageLt2 || tu.c3_judgments === '2' || tu.c3_defaults === '2' || dirJ || dirD;
+  const isClean = !hasJudgments && !hasDefaults && !dirJ && !dirD;
+  const flags = [];
+  if (hasJudgments) flags.push({ level:'red', text:`Business has judgment(s) on record` });
+  if (hasDefaults) flags.push({ level:'red', text:`Business has default(s) on record` });
+  if (dirJ) flags.push({ level:'red', text:'Director(s) have civil judgments' });
+  if (dirD) flags.push({ level:'red', text:'Director(s) have personal defaults' });
+  if (ageLt2) flags.push({ level:'red', text:'Business less than 2 years old — hard decline' });
+  else if (tu.c1_age < 3) flags.push({ level:'amber', text:'Business under 3 years — requires mitigants' });
+  if (dirAged) flags.push({ level:'amber', text:`Director aged ${tu.ko_dir_age} — succession plan required` });
+  if (!hasProperty) flags.push({ level:'amber', text:'No property ownership detected (business or director)' });
+  return { available: true, hasProperty, isClean, hardDecline, dirAged, flags, score: tu.c2_commercial, age: tu.c1_age };
+}
+
+function evalBank(bank, rental) {
+  if (!bank) return { available: false, flags: [], isStrong: false, isMarginal: false, hardDecline: false, rdCount: 0, coverage: null, conduct: null, avgMonthly: 0, dti: null };
+  const rdCount = bank.rd_count || 0;
+  const conduct = bank.overall_conduct || bank.conduct_rating;
+  const avgMonthly = bank.avg_monthly_income_excl_transfers || bank.avg_monthly_income || 0;
+  const coverage = rental && avgMonthly > 0 ? parseFloat((avgMonthly / rental).toFixed(2)) : null;
+  const dti = bank.debt_to_income_ratio;
+  const hasRDs = rdCount > 0;
+  const flags = [];
+  if (hasRDs) flags.push({ level:'red', text:`${rdCount} returned debit(s) — hard decline flag` });
+  if (conduct === 'POOR') flags.push({ level:'red', text:'Bank account conduct rated POOR' });
+  if (conduct === 'CONCERNING') flags.push({ level:'amber', text:'Bank account conduct rated CONCERNING' });
+  if (coverage !== null && coverage < 1.5) flags.push({ level: coverage < 1.0 ? 'red' : 'amber', text:`Bank income coverage ${coverage}x — below ${coverage < 1.0 ? 'minimum' : 'guideline'} 1.5x` });
+  if (dti !== null && dti > 0.6) flags.push({ level:'red', text:`Debt-to-income ratio ${(dti*100).toFixed(1)}% — high debt burden` });
+  const isStrong = !hasRDs && (conduct === 'GOOD' || conduct === 'SATISFACTORY') && (coverage === null || coverage >= 1.5);
+  const isMarginal = !hasRDs && conduct === 'CONCERNING';
+  const hardDecline = hasRDs || conduct === 'POOR';
+  return { available: true, hasRDs, rdCount, conduct, coverage, avgMonthly, dti, isStrong, isMarginal, hardDecline, flags };
+}
+
+function evalFin(fin, rental, payout, assetType) {
+  if (!fin || !fin.current) return { available: false, flags: [], isStrong: false, isMarginal: false, hardDecline: false, ebitdaCoverage: null, equity: null, dealPct: null, eqMeets: null, eqThreshold: assetType === 'income' ? 30 : 10 };
+  const c = fin.current;
+  const annualRental = rental * 12;
+  const ebitdaCoverage = c.ebitda && annualRental ? parseFloat((c.ebitda / annualRental).toFixed(2)) : null;
+  const equity = c.total_equity;
+  const eqThreshold = assetType === 'income' ? 30 : 10;
+  const dealPct = equity && payout ? parseFloat(((payout / equity) * 100).toFixed(1)) : null;
+  const negativeEquity = equity !== null && equity < 0;
+  const eqMeets = dealPct !== null ? dealPct <= eqThreshold : null;
+  const flags = [];
+  if (negativeEquity) flags.push({ level:'red', text:`Negative equity (${fmtR(equity)}) — insolvent entity` });
+  if (ebitdaCoverage !== null && ebitdaCoverage < 1.0) flags.push({ level: ebitdaCoverage < 0.8 ? 'red' : 'amber', text:`EBITDA coverage ${ebitdaCoverage}x — ${ebitdaCoverage < 0.8 ? 'insufficient' : 'marginal'}` });
+  if (!eqMeets && dealPct !== null) flags.push({ level:'amber', text:`Deal is ${dealPct}% of equity — exceeds ≤${eqThreshold}% guideline` });
+  if (fin.assurance_level === 'Unaudited') flags.push({ level:'amber', text:'Financials are unaudited — reduced reliability' });
+  if ((fin.accounting_errors||[]).length > 0) flags.push({ level:'red', text:`${fin.accounting_errors.length} accounting error(s) detected in financials` });
+  const isStrong = !negativeEquity && ebitdaCoverage !== null && ebitdaCoverage >= 1.5 && eqMeets !== false;
+  const isMarginal = !negativeEquity && ebitdaCoverage !== null && ebitdaCoverage >= 0.8 && ebitdaCoverage < 1.5;
+  return { available: true, ebitdaCoverage, equity, dealPct, eqThreshold, eqMeets, negativeEquity, isStrong, isMarginal, hardDecline: negativeEquity, flags, assurance: fin.assurance_level };
+}
+
+function evalExposure(bounceCount, bounceSelected, exposure) {
+  if (!bounceSelected) return { available: false, flags: [] };
+  const isExisting = exposure.npv > 0;
+  const cleanConduct = bounceCount === 0;
+  const flags = [];
+  if (bounceCount >= 3) flags.push({ level:'red', text:`${bounceCount}+ bounces on existing CCF account — serious conduct concern` });
+  else if (bounceCount > 0) flags.push({ level:'amber', text:`${bounceCount} bounce(s) on existing CCF account — conditions apply` });
+  if (isExisting && cleanConduct) flags.push({ level:'green', text:`Existing CCF client — ${fmtR(exposure.npv)} exposure with zero bounces (strong mitigant)` });
+  return { available: true, isExisting, cleanConduct, bounceCount, flags, npv: exposure.npv };
+}
+
+function evalDeal(deal) {
+  if (!deal) return { available: false, flags: [], score: 0, dealStrength: 'Neutral', dealColor: 'grey', summary: [] };
+  const flags = [], summary = [];
+  let score = 0;
+  const gradeMap = { 'A':{s:15,c:'green',m:'Risk Grade A supplier — strongest supplier profile'}, 'B+':{s:10,c:'green',m:'Risk Grade B+ supplier — strong supplier profile'}, 'B':{s:5,c:'green',m:'Risk Grade B supplier — acceptable supplier profile'}, 'B-':{s:0,c:'amber',m:'Risk Grade B- supplier — monitor supplier health'}, 'C':{s:-8,c:'amber',m:'Risk Grade C supplier — elevated risk; conditions apply'}, 'D':{s:-15,c:'red',m:'Risk Grade D supplier — high risk; likely decline'} };
+  const grade = (deal.riskGrade||'').toUpperCase().trim();
+  const gi = gradeMap[grade];
+  if (gi) { score += gi.s; flags.push({ level:gi.c, text:gi.m }); summary.push(`Grade ${grade}`); }
+  const periodMonths = parseInt((deal.period||'').replace(/[^0-9]/g,'')) || null;
+  const isSolar = /solar|pv|photovoltaic|inverter|battery|panel/i.test(deal.equipment||'');
+  const maxPeriod = isSolar ? 120 : 60;
+  if (periodMonths !== null) {
+    if (periodMonths <= 36) { score += 8; flags.push({ level:'green', text:`Period ${periodMonths}m — short term reduces exposure` }); }
+    else if (periodMonths <= 48) { score += 3; }
+    else if (periodMonths > maxPeriod) { score -= 5; flags.push({ level:'amber', text:`Period ${periodMonths}m exceeds standard max of ${maxPeriod}m` }); }
+    summary.push(`${periodMonths}m${isSolar?' (solar)':''}`);
+  }
+  const hasRecourse = /recourse/i.test(deal.approvalTerms||'');
+  if (hasRecourse) { score += 12; flags.push({ level:'green', text:'Supplier recourse confirmed — significant risk mitigant' }); summary.push('Recourse'); }
+  if (deal.equipment) summary.push(deal.equipment.substring(0, 40));
+  const dealStrength = score >= 15 ? 'Strong' : score >= 5 ? 'Good' : score >= -4 ? 'Neutral' : score >= -10 ? 'Marginal' : 'Weak';
+  const dealColor = score >= 5 ? 'green' : score >= -4 ? 'grey' : score >= -10 ? 'amber' : 'red';
+  return { available: true, flags, score, dealStrength, dealColor, summary, hasRecourse, periodMonths, grade, isSolar };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VERDICT ENGINE
+// ═══════════════════════════════════════════════════════════════
+function deriveVerdict(tier, tuEval, bankEval, finEval, expEval, dealEval) {
+  const conditions = [], declineReasons = [];
+  const expClean = expEval?.available && expEval.isExisting && expEval.cleanConduct;
+  const expBouncy = expEval?.available && expEval.bounceCount > 0;
+  const dealRecourse = dealEval?.available && dealEval.hasRecourse;
+  const dealGradeD = dealEval?.available && dealEval.grade === 'D';
+  const dealGradeStrong = dealEval?.available && ['A','B+','B'].includes(dealEval.grade);
+  const dealShort = dealEval?.available && dealEval.periodMonths !== null && dealEval.periodMonths <= 36;
+
+  // Hard declines
+  if (tuEval.hardDecline) { declineReasons.push(...tuEval.flags.filter(f=>f.level==='red').map(f=>f.text)); return { verdict:'declined', declineReasons, conditions, confidence:'HIGH' }; }
+  if (tuEval.dirAged) return { verdict:'deferred', declineReasons, conditions:['Director aged 70+ — succession plan required'], confidence:'HIGH' };
+  if (bankEval.available && bankEval.hardDecline) { declineReasons.push(...bankEval.flags.filter(f=>f.level==='red').map(f=>f.text)); return { verdict:'declined', declineReasons, conditions, confidence:'HIGH' }; }
+  if (finEval.available && finEval.hardDecline) { declineReasons.push(...finEval.flags.filter(f=>f.level==='red').map(f=>f.text)); return { verdict:'declined', declineReasons, conditions, confidence:'HIGH' }; }
+  if (expEval?.available && expEval.bounceCount >= 3) { declineReasons.push(`${expEval.bounceCount} bounces on existing CCF account`); return { verdict:'declined', declineReasons, conditions, confidence:'HIGH' }; }
+  if (dealGradeD) conditions.push('Risk Grade D supplier — escalate to credit committee');
+  if (expBouncy && expEval.bounceCount < 3) conditions.push(`${expEval.bounceCount} bounce(s) on existing CCF account — credit committee sign-off required`);
+
+  if (tier === 1) {
+    if (tuEval.isClean && tuEval.hasProperty) {
+      if (expBouncy) { conditions.push(`${expEval.bounceCount} bounce(s) — approve with debit order monitoring`); return { verdict:'conditions', declineReasons, conditions, confidence:'MEDIUM' }; }
+      return { verdict:'approved', declineReasons, conditions, confidence:'HIGH' };
+    }
+    if (tuEval.isClean && !tuEval.hasProperty) {
+      if (dealRecourse) return { verdict:'approved', declineReasons, conditions:['No property on TU — approved on strength of supplier recourse'], confidence:'HIGH' };
+      if (dealShort && dealGradeStrong) return { verdict:'approved', declineReasons, conditions:['No property on TU — approved on short period and strong supplier grade'], confidence:'MEDIUM' };
+      if (expClean) return { verdict:'approved', declineReasons, conditions:['No property on TU — approved on clean existing CCF conduct (zero bounces)'], confidence:'HIGH' };
+      conditions.push('No property detected — bank statements required to support approval');
+      if (bankEval.available) {
+        if (bankEval.isStrong) return { verdict:'approved', declineReasons, conditions:['No property — approved on clean TU and satisfactory bank conduct'], confidence:'MEDIUM' };
+        if (bankEval.isMarginal) { conditions.push('Bank conduct CONCERNING — escalate to senior credit'); return { verdict:'conditions', declineReasons, conditions, confidence:'MEDIUM' }; }
+      }
+      return { verdict:'deferred', declineReasons, conditions, confidence:'MEDIUM' };
+    }
+    conditions.push('Minor adverse on TransUnion — escalate to senior credit');
+    return { verdict:'conditions', declineReasons, conditions, confidence:'MEDIUM' };
+  }
+
+  if (tier === 2) {
+    if (!bankEval.available) return { verdict:'deferred', declineReasons, conditions:['Bank statements required for Tier 2 deals'], confidence:'LOW' };
+    if (!tuEval.isClean) conditions.push('Minor adverse on TransUnion — escalate to senior credit');
+    if (!tuEval.hasProperty) conditions.push(expClean ? 'No property — mitigated by clean CCF conduct; suretyship recommended' : 'No property — obtain additional security or suretyship');
+    if (bankEval.isMarginal) conditions.push('Bank conduct CONCERNING — obtain updated statements before drawdown');
+    if (bankEval.coverage !== null && bankEval.coverage < 1.5 && bankEval.coverage >= 1.0) conditions.push(`Bank coverage marginal at ${bankEval.coverage}x — monitor post-approval`);
+    if (conditions.length === 0) return { verdict:'approved', declineReasons, conditions, confidence:'HIGH' };
+    return { verdict:'conditions', declineReasons, conditions, confidence:'MEDIUM' };
+  }
+
+  if (tier === 3) {
+    if (!finEval.available) return { verdict:'deferred', declineReasons, conditions:['Financials required for deals above R400k'], confidence:'LOW' };
+    if (!tuEval.isClean) conditions.push('Minor adverse on TransUnion — escalate to credit committee');
+    if (!tuEval.hasProperty) conditions.push(expClean ? 'No property — mitigated by clean CCF conduct; suretyship recommended' : 'No property — obtain additional security or suretyship');
+    if (finEval.ebitdaCoverage !== null && finEval.ebitdaCoverage < 1.0) { declineReasons.push(`EBITDA coverage insufficient at ${finEval.ebitdaCoverage}x`); return { verdict:'declined', declineReasons, conditions, confidence:'HIGH' }; }
+    if (finEval.isMarginal) conditions.push(`EBITDA coverage marginal at ${finEval.ebitdaCoverage}x — ${expClean ? 'mitigated by clean CCF conduct; ' : ''}obtain quarterly management accounts`);
+    if (!finEval.eqMeets && finEval.dealPct !== null) conditions.push(`Deal ${finEval.dealPct}% of equity exceeds ≤${finEval.eqThreshold}% guideline — credit committee sign-off`);
+    if (finEval.assurance === 'Unaudited' || finEval.assurance === 'Compiled') conditions.push('Financials unaudited — obtain audited statements or additional security');
+    if (!bankEval.available) conditions.push('Bank statements not provided — obtain at next review');
+    else { if (bankEval.isMarginal) conditions.push('Bank conduct CONCERNING — updated statements required'); if (bankEval.coverage !== null && bankEval.coverage < 1.5 && bankEval.coverage >= 1.0) conditions.push(`Bank coverage ${bankEval.coverage}x marginal — monitor`); }
+    if (conditions.length === 0) return { verdict:'approved', declineReasons, conditions, confidence:'HIGH' };
+    return { verdict:'conditions', declineReasons, conditions, confidence:'MEDIUM' };
+  }
+  return { verdict:'deferred', declineReasons, conditions:['Check payout value'], confidence:'LOW' };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ANALYSIS PROMPTS
+// ═══════════════════════════════════════════════════════════════
+const TU_PROMPT = `You are a senior credit analyst. Extract data from this TransUnion CV4B Business Information Report. Return ONLY valid JSON, no markdown.
+
+Return:
+{
+  "entity": "string — company name",
+  "reg_no": "string",
+  "c1_age": number (years trading, decimal ok),
+  "c2_commercial": number (CV4B Commercial Score, e.g. 910),
+  "c3_judgments": "0|1|2" (0=none, 1=one, 2=two or more),
+  "c3_defaults": "0|1|2",
+  "c4_judgments": "0|1|2" (director judgments),
+  "c4_defaults": "0|1" (director defaults),
+  "c4_dir_property": "none|one|all" (director property ownership),
+  "c5_props": number (business properties owned, 0 if none),
+  "c6_adverse": "0|1|2" (linked adverse businesses),
+  "ko_dir_age": number or null (age of OLDEST director — extract ONLY from Date of Birth or Age field in Principal/Director section, NOT from registration numbers or other numeric fields. Must be between 18 and 100 to be valid, otherwise return null),
+  "ko_dir_tenure": number or null (years as director, minimum tenure),
+  "ko_dir_count": number (number of directors)
+}
+
+CRITICAL: ko_dir_age must come ONLY from a field explicitly showing a director's birth year, DOB, or age. Registration numbers, ticket numbers, TU numbers are NOT ages. If uncertain, return null.`;
+
+const FIN_PROMPT = `You are a senior credit analyst. Extract financial data from these statements (may be audited AFS or management accounts). Return ONLY valid JSON.
+
+{
+  "entity": "string",
+  "period_current": "string",
+  "period_prior": "string or null",
+  "assurance_level": "Audited|Reviewed|Compiled|Unaudited|Unknown",
+  "auditor_name": "string or null",
+  "current": { "revenue":null,"gross_profit":null,"gp_margin":null,"ebitda":null,"npbt":null,"npat":null,"total_equity":null,"total_assets":null,"total_liabilities":null,"current_assets":null,"current_liabilities":null,"total_debt":null,"cash":null },
+  "prior": { "revenue":null,"gross_profit":null,"gp_margin":null,"ebitda":null,"npbt":null,"npat":null,"total_equity":null,"total_assets":null,"total_liabilities":null,"current_assets":null,"current_liabilities":null,"total_debt":null,"cash":null },
+  "accounting_errors": ["string — confirmed errors only, max 5, under 120 chars each"],
+  "integrity_warnings": ["string — max 5, under 120 chars"],
+  "flags": ["credit risk observations — max 8, under 120 chars each"]
+}
+EBITDA = NPBT + interest + depreciation + amortisation. All values in same unit as statements.`;
+
+const BANK_PROMPT = `You are a senior credit analyst. Analyse these bank statements. Return ONLY valid JSON.
+
+{
+  "bank_name": "string",
+  "account_holder": "string",
+  "account_number": "string",
+  "period": "string",
+  "overall_conduct": "GOOD|SATISFACTORY|CONCERNING|POOR",
+  "rd_count": number,
+  "excess_count": number,
+  "avg_monthly_income": number,
+  "avg_monthly_income_excl_transfers": number,
+  "total_credits": number,
+  "income_trend": "GROWING|STABLE|VOLATILE|DECLINING",
+  "income_regularity": "REGULAR|IRREGULAR",
+  "primary_income_source": "string",
+  "avg_monthly_debits": number,
+  "debit_to_credit_ratio": number,
+  "opening_balance": number,
+  "closing_balance": number,
+  "avg_monthly_closing_balance": number,
+  "lowest_balance": number,
+  "overdraft_limit": number or null,
+  "od_times_breached": number,
+  "total_monthly_debt": number,
+  "debt_to_income_ratio": number,
+  "conduct_notes": "string — key observations under 200 chars",
+  "returned_debits": [{"date":"string","description":"string","amount":number}],
+  "identified_debts": [{"lender":"string","monthly_instalment":number,"missed_payments":number}]
+}
+
+CRITICAL RD RULES — Only classify as returned debit if it is a debit ORDER (third-party pull) that failed. DO NOT classify as RD: ATM declined transactions, POS/card purchase declines, "#Debit Card POS Unsuccessful", "Declined Purch Tran", "Card Declined", "Fee Declined". These are consumer-initiated card declines with zero credit risk significance.`;
+
+const SYNOPSIS_PROMPT = `You are a senior credit analyst at CCF Asset Finance writing a brief internal credit synopsis.
+
+RULES:
+1. Match length to data available: TU only = 2-3 sentences. TU+bank = 3-5 sentences. TU+fin+bank = 6-10 sentences.
+2. Only mention what was actually provided. Never speculate about missing data.
+3. Write in first person, direct CCF analyst voice.
+4. Touch key pillars IF data supports: business description, revenue/growth, profitability/equity, liquidity, bank conduct/OD usage, asset quality, verdict.
+5. Specific numbers beat vague descriptions.
+6. Never use: "contingent upon ongoing monitoring", "inherently considers", "in conclusion", "it is recommended".
+7. End with one-line verdict.
+
+EXAMPLE: "Happy to support this deal. Client in cold storage/food distribution — main clients Spar and Ikhwezi Foods, big varied debtors book. Revenue grown to almost R200m. Profitable, equity around R8m ex shareholder loans. Liquid. Bank good — OD limit R5m, lowest balance R4.1m, regular debtor payments. Good equity asset, 20% deposit added."`;
+
+// ═══════════════════════════════════════════════════════════════
+// RUN ANALYSIS
+// ═══════════════════════════════════════════════════════════════
+async function runAnalysis() {
+  if (!S.apiKey) { showModal(); return; }
+  if (S.files.tu.length === 0) { S.error = 'Please upload a TransUnion CV4B report.'; render(); return; }
+  const payout = parseFloat(S.payout);
+  const rental = parseFloat(S.rental);
+  if (!payout || payout <= 0) { S.error = 'Please enter a valid payout / equipment value.'; render(); return; }
+  if (!rental || rental <= 0) { S.error = 'Please enter a valid monthly rental amount.'; render(); return; }
+  const tier = getTier(payout);
+  if (tier === 2 && S.files.bank.length === 0) { S.error = 'Bank statements required for Tier 2 deals (R250k–R400k).'; render(); return; }
+  if (tier === 3 && S.files.finCur.length === 0) { S.error = 'Financials required for Tier 3 deals (above R400k).'; render(); return; }
+
+  S.error = ''; S.step = 'loading'; render();
+
+  try {
+    // TU
+    setProgress('Parsing TransUnion report...');
+    const tuB64 = await toB64(S.files.tu[0]);
+    const tuRaw = await callClaude(TU_PROMPT, [{ type:'document', source:{ type:'base64', media_type:'application/pdf', data:tuB64 } }, { type:'text', text:'Extract all fields from this TransUnion CV4B report.' }]);
+    S.tuResult = await parseJson(tuRaw);
+
+    // Financials
+    if (S.files.finCur.length > 0) {
+      setProgress('Analysing financial statements...');
+      const finContent = [];
+      for (const f of [...S.files.finCur, ...S.files.finPri]) { finContent.push({ type:'document', source:{ type:'base64', media_type:'application/pdf', data: await toB64(f) } }); }
+      for (const f of S.files.manAccs) { finContent.push({ type:'document', source:{ type:'base64', media_type:'application/pdf', data: await toB64(f) } }); }
+      finContent.push({ type:'text', text:`Extract financial data. Current year files: ${S.files.finCur.length}. Prior year files: ${S.files.finPri.length}. Management accounts: ${S.files.manAccs.length}.` });
+      const finRaw = await callClaude(FIN_PROMPT, finContent, 5000);
+      S.finResult = await parseJson(finRaw);
+    }
+
+    // Bank
+    if (S.files.bank.length > 0) {
+      setProgress('Analysing bank statements...');
+      const bankContent = [];
+      for (const f of S.files.bank) { bankContent.push({ type:'document', source:{ type:'base64', media_type:'application/pdf', data: await toB64(f) } }); }
+      bankContent.push({ type:'text', text:`Analyse these ${S.files.bank.length} bank statement PDF(s). Apply RD classification rules strictly.` });
+      const bankRaw = await callClaude(BANK_PROMPT, bankContent, 5000);
+      S.bankResult = await parseJson(bankRaw);
+    }
+
+    // Pre-fill synopsis
+    const tuEv = evalTU(S.tuResult), bankEv = evalBank(S.bankResult, rental), finEv = evalFin(S.finResult, rental, payout, S.assetType);
+    const { verdict } = deriveVerdict(tier, tuEv, bankEv, finEv, evalExposure(S.bounceCount, S.bounceSelected, S.exposure), evalDeal(S.dealCtx));
+    setProgress('Generating synopsis...');
+    const synCtx = buildSynopsisContext(tuEv, bankEv, finEv, verdict, payout, rental);
+    S.synopsis = await callClaude(SYNOPSIS_PROMPT, synCtx, 600);
+
+    S.step = 'review';
+  } catch (ex) {
+    S.error = 'Analysis failed: ' + ex.message;
+    S.step = 'upload';
+  }
+  render();
+}
+
+function setProgress(msg) { S.progress = msg; render(); }
+
+function buildSynopsisContext(tuEv, bankEv, finEv, verdict, payout, rental) {
+  const fin = S.finResult;
+  const bank = S.bankResult;
+  const tier = getTier(parseFloat(S.payout));
+  return `Entity: ${S.tuResult?.entity || S.entity || 'Unknown'}
+Trading age: ${S.tuResult?.c1_age ?? '—'} years | TU Score: ${S.tuResult?.c2_commercial ?? '—'}
+Deal: Tier ${tier} | Payout R${fmt(parseFloat(S.payout))} | Rental R${fmt(parseFloat(S.rental))}/month | Asset: ${S.assetType === 'income' ? 'Income-Generating' : 'Non-Income-Generating'}
+TransUnion: Property ${tuEv.hasProperty ? 'Yes' : 'No'} | Status: ${tuEv.isClean ? 'Clean' : 'Adverse noted'}
+${finEv.available ? `Financials (${fin?.assurance_level}): Revenue ${fmtR(fin?.current?.revenue)} | EBITDA ${fmtR(fin?.current?.ebitda)} | Coverage ${finEv.ebitdaCoverage ?? 'N/A'}x | Equity ${fmtR(finEv.equity)} | Deal ${finEv.dealPct ?? 'N/A'}% of equity` : 'Financials: Not provided'}
+${bankEv.available ? `Bank: Conduct ${bankEv.conduct} | RDs ${bankEv.rdCount} | Avg income ${fmtR(bankEv.avgMonthly)}/month | Coverage ${bankEv.coverage ?? 'N/A'}x | DTI ${bankEv.dti != null ? (bankEv.dti*100).toFixed(1)+'%' : 'N/A'} | OD limit ${fmtR(bank?.overdraft_limit)}` : 'Bank: Not provided'}
+${S.bounceSelected && S.exposure.npv > 0 ? `CCF existing: ${fmtR(S.exposure.npv)} | Bounces: ${S.bounceCount}` : 'CCF: New client or not checked'}
+${S.dealCtx ? `Deal: Grade ${S.dealCtx.riskGrade} | Period ${S.dealCtx.period} | Recourse: ${/recourse/i.test(S.dealCtx.approvalTerms||'') ? 'Yes' : 'No'} | Equipment: ${S.dealCtx.equipment}` : ''}
+Verdict: ${verdict.toUpperCase()}`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FILE HANDLING
+// ═══════════════════════════════════════════════════════════════
+function handleFiles(key, files) {
+  const arr = Array.from(files);
+  if (key === 'tu') S.files.tu = arr.slice(0,1);
+  else S.files[key] = [...(S.files[key]||[]), ...arr];
+  render();
+}
+function removeFile(key, idx) { S.files[key].splice(idx, 1); render(); }
+
+function uploadZone(key, label, sublabel, multiple=false) {
+  const files = S.files[key] || [];
+  const id = `uz-${key}`;
+  return `<div>
+    <label>${label}</label>
+    ${sublabel ? `<div style="font-size:11px;color:#6b7280;margin-bottom:6px">${sublabel}</div>` : ''}
+    <div class="upload-zone ${files.length>0?'loaded':''}" onclick="document.getElementById('${id}').click()">
+      <span>${files.length>0 ? `✓ ${files.length} file${files.length>1?'s':''} selected` : 'Click to upload PDF'}</span>
+    </div>
+    <input type="file" id="${id}" accept=".pdf" ${multiple?'multiple':''} style="display:none" onchange="handleFiles('${key}',this.files)">
+    <div class="file-list">${files.map((f,i)=>`<div class="file-item"><span>📎 ${f.name}</span><button class="file-remove" onclick="removeFile('${key}',${i})">✕</button></div>`).join('')}</div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════════════
+function render() {
+  const app = document.getElementById('app');
+  if (S.step === 'loading') { app.innerHTML = renderLoading(); return; }
+  if (S.step === 'review') { app.innerHTML = renderReview(); return; }
+  app.innerHTML = renderUpload();
+}
+
+function renderLoading() {
+  return `<div class="loading">
+    <div class="spinner"></div>
+    <h2>Running Unified Assessment</h2>
+    <p>${S.progress}</p>
+  </div>`;
+}
+
+function badge(status) {
+  const map = { green:'<span class="badge badge-green">✓ Strong</span>', amber:'<span class="badge badge-amber">⚠ Marginal</span>', red:'<span class="badge badge-red">✕ Concern</span>', grey:'<span class="badge badge-grey">— N/A</span>', blue:'<span class="badge badge-blue">~ Neutral</span>' };
+  return map[status] || map.grey;
+}
+
+function verdictClass(v) { return { approved:'verdict-approved', conditions:'verdict-conditions', deferred:'verdict-deferred', declined:'verdict-declined' }[v] || 'verdict-deferred'; }
+function verdictLabel(v) { return { approved:'✓ Approved', conditions:'⚠ Approve with Conditions', deferred:'⟳ Deferred', declined:'✕ Declined' }[v] || '⟳ Deferred'; }
+
+function renderUpload() {
+  const payout = parseFloat(S.payout) || 0;
+  const tier = getTier(payout);
+  const ti = tier ? TIER_INFO[tier] : null;
+
+  return `
+  <!-- Deal Parameters -->
+  <div class="card">
+    <div class="card-header"><h2>Deal Parameters</h2></div>
+    <div class="card-body">
+      <div class="grid-2" style="margin-bottom:14px">
+        <div class="form-group">
+          <label>Payout / Equipment Value (R) *</label>
+          <input type="number" value="${S.payout}" oninput="S.payout=this.value;render()" placeholder="e.g. 300000">
+        </div>
+        <div class="form-group">
+          <label>Monthly Rental (R) *</label>
+          <input type="number" value="${S.rental}" oninput="S.rental=this.value" placeholder="e.g. 8500">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Asset Type *</label>
+        <div class="toggle-row">
+          <div class="toggle-opt ${S.assetType==='non-income'?'active':''}" onclick="S.assetType='non-income';render()">
+            <div class="opt-label">${S.assetType==='non-income'?'●':'○'} Non-Income Generating</div>
+            <div class="opt-sub">Deal ≤10% of equity guideline</div>
+          </div>
+          <div class="toggle-opt ${S.assetType==='income'?'active':''}" onclick="S.assetType='income';render()">
+            <div class="opt-label">${S.assetType==='income'?'●':'○'} Income Generating</div>
+            <div class="opt-sub">Deal ≤30% of equity guideline</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Entity / Applicant Name</label>
+        <input type="text" value="${S.entity}" oninput="S.entity=this.value" placeholder="e.g. SA Valuations (Pty) Ltd">
+      </div>
+      ${tier ? `<div class="tier-banner tier-${tier}"><div class="tier-title">Tier ${tier} Deal — ${ti.label}</div><div class="tier-desc">${ti.desc}</div></div>` : ''}
+    </div>
+  </div>
+
+  <!-- TransUnion -->
+  <div class="card">
+    <div class="card-header"><h2>TransUnion CV4B Report *</h2><span style="font-size:11px;color:#6b7280">Required — all tiers</span></div>
+    <div class="card-body">${uploadZone('tu','','Upload the full CV4B Business Information Report PDF')}</div>
+  </div>
+
+  <!-- Bank Statements -->
+  <div class="card">
+    <div class="card-header">
+      <h2>Bank Statements ${tier>=2?'*':'(optional)'}</h2>
+      <span style="font-size:11px;color:#6b7280">${tier===2?'Required for Tier 2':tier===3?'Strongly preferred for Tier 3':'Optional for Tier 1'}</span>
+    </div>
+    <div class="card-body">${uploadZone('bank','','Upload 3–6 months of bank statements (multiple PDFs supported)',true)}</div>
+  </div>
+
+  <!-- Financials -->
+  <div class="card">
+    <div class="card-header">
+      <h2>Financial Statements ${tier===3?'*':'(optional)'}</h2>
+      <span style="font-size:11px;color:#6b7280">${tier===3?'Required for Tier 3':'Optional'}</span>
+    </div>
+    <div class="card-body">
+      <div style="margin-bottom:12px">${uploadZone('finCur','Current Year AFS','Audited / reviewed / compiled financials',true)}</div>
+      <div style="margin-bottom:12px">${uploadZone('finPri','Prior Year AFS (optional)','Separate prior year document if not included above',true)}</div>
+      ${uploadZone('manAccs','Management Accounts (optional)','Latest interim management accounts',true)}
+    </div>
+  </div>
+
+  <!-- Existing Exposure -->
+  <div class="card">
+    <div class="card-header"><h2>CCF Existing Exposure</h2><span style="font-size:11px;color:#6b7280">All tiers — optional but recommended</span></div>
+    <div class="card-body">
+      <p style="font-size:12px;color:#6b7280;margin-bottom:12px">Enter existing CCF exposure and bounce history. Zero bounces on an existing account is a strong mitigant — can offset missing property on Tier 1.</p>
+      ${!S.bounceSelected ? `
+        <div class="form-group">
+          <label>Client Name in CCF Book</label>
+          <input type="text" value="${S.exposure.clientName}" oninput="S.exposure.clientName=this.value" placeholder="Search or type client name">
+        </div>
+        <div class="grid-2" style="margin-bottom:12px">
+          <div class="form-group">
+            <label>Existing Exposure (NPV from Rental Suite)</label>
+            <input type="number" value="${S.exposure.npv||''}" oninput="S.exposure.npv=parseFloat(this.value)||0" placeholder="0 if new client">
+          </div>
+          <div class="form-group">
+            <label>Deals on Book</label>
+            <input type="number" value="${S.exposure.count||''}" oninput="S.exposure.count=parseInt(this.value)||0" placeholder="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Bounces / Returned Debits on CCF Account</label>
+          <div class="bounce-row">
+            ${[0,1,2,3,'4+'].map(n => { const v = n==='4+' ? 4 : n; return `<button class="bounce-btn" onclick="S.bounceCount=${v}" style="border-color:${v===0?'var(--green)':v<=2?'var(--amber)':'var(--red)'};background:${v===0?'var(--green-bg)':v<=2?'var(--amber-bg)':'var(--red-bg)'};color:${v===0?'#065f46':v<=2?'#92400e':'#991b1b'}">${n}</button>`; }).join('')}
+          </div>
+          <div style="font-size:12px;margin-top:8px;font-weight:600;color:${S.bounceCount===0?'var(--green)':S.bounceCount<=2?'var(--amber)':'var(--red)'}">
+            ${S.bounceCount===0?'✓ Zero bounces — strong mitigant if existing client':S.bounceCount<=2?`⚠ ${S.bounceCount} bounce(s) — conditions will apply`:`✕ ${S.bounceCount}+ bounces — likely decline`}
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="S.bounceSelected=true;render()">Confirm Exposure</button>
+        <button class="btn btn-outline btn-sm" style="margin-left:8px" onclick="S.bounceSelected=true;S.exposure={npv:0,count:0,clientName:'New client'};render()">Skip — new client</button>
+      ` : `
+        <div class="alert alert-green" style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <strong>${S.exposure.clientName||'Client'}</strong>
+            ${S.exposure.npv > 0 ? ` — ${fmtR(S.exposure.npv)} existing exposure · ${S.exposure.count} deal(s)` : ' — New client'}
+            · Bounces: <strong>${S.bounceCount}</strong>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="S.bounceSelected=false;render()">Change</button>
+        </div>
+      `}
+    </div>
+  </div>
+
+  <!-- Deal Context -->
+  <div class="card">
+    <div class="card-header"><h2>Monday Deal Context (optional)</h2><span style="font-size:11px;color:#6b7280">Supplier grade, period, recourse, equipment</span></div>
+    <div class="card-body">
+      <p style="font-size:12px;color:#6b7280;margin-bottom:12px">Enter deal details from Monday Applications 2026 board. These feed directly into the credit decision — supplier grade and recourse are meaningful mitigants.</p>
+      ${!S.dealCtx ? `
+        <div class="grid-2" style="margin-bottom:12px">
+          <div class="form-group">
+            <label>Supplier Risk Grade</label>
+            <select onchange="S._dc=S._dc||{};S._dc.riskGrade=this.value">
+              <option value="">— Select —</option>
+              ${['A','B+','B','B-','C','D'].map(g=>`<option>${g}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Rental Period (months)</label>
+            <input type="number" placeholder="e.g. 60" oninput="S._dc=S._dc||{};S._dc.period=this.value+' months'">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Equipment Description</label>
+          <input type="text" placeholder="e.g. 1 x A4 Colour MFP" oninput="S._dc=S._dc||{};S._dc.equipment=this.value">
+        </div>
+        <div class="form-group">
+          <label>Approval Terms / Recourse</label>
+          <input type="text" placeholder="e.g. Supplier Recourse, 10% deposit" oninput="S._dc=S._dc||{};S._dc.approvalTerms=this.value">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="if(S._dc){S.dealCtx=S._dc;S._dc=null;render();}">Confirm Deal Context</button>
+        <button class="btn btn-outline btn-sm" style="margin-left:8px" onclick="S.dealCtx=null;S._dc=null;render()">Skip</button>
+      ` : `
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">
+          ${[['Supplier Risk Grade',S.dealCtx.riskGrade],['Period',S.dealCtx.period],['Equipment',S.dealCtx.equipment],['Recourse',/recourse/i.test(S.dealCtx.approvalTerms||'')?'✓ Yes':'Not confirmed']].filter(f=>f[1]).map(([l,v])=>`<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;font-weight:600">${l}</div><div style="font-size:13px;font-weight:700;color:#1f2937">${v}</div></div>`).join('')}
+        </div>
+        <button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="S.dealCtx=null;render()">Change</button>
+      `}
+    </div>
+  </div>
+
+  ${S.error ? `<div class="alert alert-red">${S.error}</div>` : ''}
+  ${!S.apiKey ? `<div class="alert alert-amber">⚠ API key not set — <a href="#" onclick="showModal();return false">click here to add it</a> before running analysis.</div>` : ''}
+
+  <button class="btn btn-primary btn-full" style="margin-top:4px;padding:14px" onclick="runAnalysis()">Run Unified Credit Assessment →</button>`;
+}
+
+function renderReview() {
+  const payout = parseFloat(S.payout), rental = parseFloat(S.rental);
+  const tier = getTier(payout);
+  const assetLabel = S.assetType === 'income' ? 'Income-Generating' : 'Non-Income-Generating';
+  const entity = S.entity || S.tuResult?.entity || 'Applicant';
+  const tuEv = evalTU(S.tuResult);
+  const bankEv = evalBank(S.bankResult, rental);
+  const finEv = evalFin(S.finResult, rental, payout, S.assetType);
+  const expEv = evalExposure(S.bounceCount, S.bounceSelected, S.exposure);
+  const dealEv = evalDeal(S.dealCtx);
+  const { verdict: derived, declineReasons, conditions } = deriveVerdict(tier, tuEv, bankEv, finEv, expEv, dealEv);
+  const activeVerdict = S.verdict || derived;
+  const vInfo = { approved:{label:'✓ Approved',cls:'verdict-approved',lc:'#059669'}, conditions:{label:'⚠ Approve with Conditions',cls:'verdict-conditions',lc:'#d97706'}, deferred:{label:'⟳ Deferred',cls:'verdict-deferred',lc:'#2563eb'}, declined:{label:'✕ Declined',cls:'verdict-declined',lc:'#dc2626'} };
+  const vi = vInfo[activeVerdict] || vInfo.deferred;
+
+  const tuStatus = tuEv.hardDecline ? 'red' : !tuEv.isClean ? 'amber' : 'green';
+  const bankStatus = !bankEv.available ? 'grey' : bankEv.hardDecline ? 'red' : bankEv.isStrong ? 'green' : 'amber';
+  const finStatus = !finEv.available ? 'grey' : finEv.hardDecline ? 'red' : finEv.isStrong ? 'green' : finEv.isMarginal ? 'amber' : 'green';
+  const expStatus = !expEv.available ? 'grey' : expEv.bounceCount >= 3 ? 'red' : expEv.bounceCount > 0 ? 'amber' : expEv.isExisting ? 'green' : 'grey';
+  const dealStatus = !dealEv.available ? 'grey' : { Strong:'green', Good:'green', Neutral:'grey', Marginal:'amber', Weak:'red' }[dealEv.dealStrength] || 'grey';
+
+  const allFlags = [
+    ...tuEv.flags.map(f=>({...f,src:'TU'})),
+    ...finEv.flags.map(f=>({...f,src:'Fin'})),
+    ...bankEv.flags.map(f=>({...f,src:'Bank'})),
+    ...(expEv.flags||[]).map(f=>({...f,src:'CCF'})),
+    ...(dealEv.flags||[]).map(f=>({...f,src:'Deal'}))
+  ];
+
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px" class="no-print">
+    <div>
+      <h2 style="color:var(--teal);font-size:20px">Unified Credit Assessment</h2>
+      <p style="color:var(--gold);font-size:13px;margin-top:3px">${entity} — Tier ${tier} (${TIER_INFO[tier]?.label}) — ${assetLabel}</p>
+    </div>
+    <button class="btn btn-outline btn-sm" onclick="S.step='upload';render()">← Start Over</button>
+  </div>
+
+  <!-- KPI Strip -->
+  <div class="card">
+    <div class="card-body" style="padding:12px 16px">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+        ${[
+          {l:'Payout Value',v:`R${fmt(payout)}`,s:`Tier ${tier}`},
+          {l:'Monthly Rental',v:`R${fmt(rental)}`,s:`R${fmt(rental*12)} p.a.`},
+          {l:'Asset Type',v:assetLabel,s:`≤${S.assetType==='income'?30:10}% equity`},
+          {l:'Inputs',v:[S.tuResult&&'TU',S.finResult&&'Fin',S.bankResult&&'Bank'].filter(Boolean).join(' · ')||'TU only',s:'analysed'}
+        ].map((item,i,arr)=>`<div style="padding:12px 14px;background:#f8fafc;${i<arr.length-1?'border-right:1px solid #e2e8f0':''}">
+          <div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px">${item.l}</div>
+          <div style="font-size:14px;font-weight:800;color:var(--teal)">${item.v}</div>
+          <div style="font-size:10px;color:#9ca3af">${item.s}</div>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>
+
+  <!-- Traffic Light -->
+  <div class="card">
+    <div class="card-header"><h2>Module Assessment Summary</h2></div>
+    <div class="card-body" style="padding:0">
+      <table class="tl-table">
+        <thead><tr><th>Module</th><th>Status</th><th>Key Finding</th><th>Rating</th></tr></thead>
+        <tbody>
+          <tr><td style="font-weight:600">TransUnion CV4B</td><td>✓ Analysed</td><td style="font-size:12px">Score ${S.tuResult?.c2_commercial??'—'} · Age ${S.tuResult?.c1_age??'—'}yr · Property: ${tuEv.hasProperty?'Yes':'No'} · ${tuEv.isClean?'Clean':'Adverse noted'}</td><td>${badge(tuStatus)}</td></tr>
+          <tr><td style="font-weight:600">CCF Existing Exposure</td><td>${expEv.available?'✓ Checked':'— Not checked'}</td><td style="font-size:12px">${expEv.available?(expEv.isExisting?`${fmtR(expEv.npv)} · Bounces: ${expEv.bounceCount}`:'New client'):'Exposure lookup not completed'}</td><td>${badge(expStatus)}</td></tr>
+          <tr><td style="font-weight:600">Financial Statements</td><td>${finEv.available?'✓ Analysed':'— Not provided'}</td><td style="font-size:12px">${finEv.available?`EBITDA cov: ${finEv.ebitdaCoverage??'N/A'}x · Equity: ${fmtR(finEv.equity)} · Deal: ${finEv.dealPct??'N/A'}% of equity`:'Not provided'}</td><td>${badge(finStatus)}</td></tr>
+          <tr><td style="font-weight:600">Bank Statements</td><td>${bankEv.available?'✓ Analysed':'— Not provided'}</td><td style="font-size:12px">${bankEv.available?`Conduct: ${bankEv.conduct} · RDs: ${bankEv.rdCount} · Income cov: ${bankEv.coverage??'N/A'}x`:'Not provided'}</td><td>${badge(bankStatus)}</td></tr>
+          <tr><td style="font-weight:600">Monday Deal Context</td><td>${dealEv.available?'✓ Linked':'— Not linked'}</td><td style="font-size:12px">${dealEv.available?dealEv.summary.join(' · '):'No deal context linked'}</td><td>${badge(dealStatus)}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Derived Verdict -->
+  <div class="${vi.cls}" style="border-radius:10px;padding:16px;margin-bottom:14px;border-width:2px;border-style:solid">
+    <div style="font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;color:${vi.lc}">
+      ${S.verdict ? 'Committee Verdict' : 'Derived Recommendation (editable below)'}
+    </div>
+    <div style="font-size:22px;font-weight:900;color:${vi.lc}">${vi.label}</div>
+    ${conditions.length>0?`<div style="margin-top:10px"><div style="font-size:12px;font-weight:700;color:${vi.lc};margin-bottom:5px">Conditions:</div><ul class="conditions-list">${conditions.map(c=>`<li style="color:${vi.lc}">${c}</li>`).join('')}</ul></div>`:''}
+    ${declineReasons.length>0?`<div style="margin-top:10px"><div style="font-size:12px;font-weight:700;color:#991b1b;margin-bottom:5px">Decline Reasons:</div><ul class="conditions-list">${declineReasons.map(d=>`<li style="color:#7f1d1d">${d}</li>`).join('')}</ul></div>`:''}
+  </div>
+
+  <!-- All Flags -->
+  ${allFlags.length>0?`<div class="card"><div class="card-header"><h2>All Risk Flags</h2></div><div class="card-body">${allFlags.map(f=>`<div class="flag-item flag-${f.level}"><span class="flag-src src-${f.src.toLowerCase()}">${f.src}</span><span class="flag-text">${f.text}</span></div>`).join('')}</div></div>`:''}
+
+  <!-- Analyst Recommendation -->
+  <div class="card">
+    <div class="card-header">
+      <h2>Analyst Recommendation</h2>
+      <button class="btn btn-outline btn-sm" onclick="S.synopsis='';render()">Clear</button>
+    </div>
+    <div class="card-body">
+      <textarea id="synopsis-text" rows="5" placeholder="Edit or type your recommendation in your own voice..." oninput="S.synopsis=this.value">${S.synopsis}</textarea>
+      <div class="char-count">${S.synopsis.length} characters · flows to Word export</div>
+    </div>
+  </div>
+
+  <!-- Committee Verdict -->
+  <div class="card">
+    <div class="card-header"><h2>Committee Verdict</h2></div>
+    <div class="card-body">
+      <div class="verdict-btns">
+        ${['approved','conditions','deferred','declined'].map(v=>{
+          const labels = {approved:'✓ Approved',conditions:'⚠ Approve with Conditions',deferred:'⟳ Deferred',declined:'✕ Declined'};
+          return `<button class="vbtn vbtn-${v} ${S.verdict===v?'active':''}" onclick="S.verdict=S.verdict==='${v}'?null:'${v}';render()">${labels[v]}</button>`;
+        }).join('')}
+      </div>
+      ${S.verdict?`
+        <textarea placeholder="Notes / conditions (optional)" rows="3" style="width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;resize:vertical;font-family:inherit;margin-bottom:10px" oninput="S.verdictNote=this.value">${S.verdictNote}</textarea>
+        <div style="padding:10px 14px;border-radius:7px;background:${vInfo[S.verdict]?.cls.replace('verdict-','')==='approved'?'var(--green-bg)':S.verdict==='conditions'?'var(--amber-bg)':S.verdict==='deferred'?'#dbeafe':'var(--red-bg)'};border:1px solid;display:flex;align-items:center;gap:10px">
+          <span style="font-size:16px;font-weight:900;color:${vInfo[S.verdict]?.lc}">${vInfo[S.verdict]?.label}</span>
+          <span style="font-size:11px;color:#6b7280">${new Date().toLocaleDateString('en-ZA')} — CCF Credit Committee</span>
+        </div>
+      ` : '<div style="font-size:12px;color:#6b7280;text-align:center">Select a verdict above — or accept the derived recommendation</div>'}
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <div class="btn-row no-print">
+    <button class="btn btn-primary" onclick="downloadDocx()" style="flex:1">📄 Download Word</button>
+    <button class="btn btn-gold" onclick="window.print()" style="flex:1">🖨 Print / Save PDF</button>
+    <button class="btn btn-outline" onclick="S.step='upload';render()" style="flex:1">New Analysis</button>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WORD EXPORT (simple HTML-in-docx approach via Blob)
+// ═══════════════════════════════════════════════════════════════
+function downloadDocx() {
+  const payout = parseFloat(S.payout), rental = parseFloat(S.rental);
+  const tier = getTier(payout);
+  const entity = S.entity || S.tuResult?.entity || 'Applicant';
+  const assetLabel = S.assetType === 'income' ? 'Income-Generating' : 'Non-Income-Generating';
+  const tuEv = evalTU(S.tuResult), bankEv = evalBank(S.bankResult, rental), finEv = evalFin(S.finResult, rental, payout, S.assetType);
+  const expEv = evalExposure(S.bounceCount, S.bounceSelected, S.exposure), dealEv = evalDeal(S.dealCtx);
+  const { verdict: derived, declineReasons, conditions } = deriveVerdict(tier, tuEv, bankEv, finEv, expEv, dealEv);
+  const activeVerdict = S.verdict || derived;
+  const vInfo = { approved:{label:'✓ APPROVED',col:'#059669'}, conditions:{label:'⚠ APPROVE WITH CONDITIONS',col:'#d97706'}, deferred:{label:'⟳ DEFERRED',col:'#2563eb'}, declined:{label:'✕ DECLINED',col:'#dc2626'} };
+  const vi = vInfo[activeVerdict] || vInfo.deferred;
+  const fin = S.finResult, bank = S.bankResult;
+
+  const h2 = t => `<h2 style="color:#366775;font-size:15px;border-bottom:2px solid #987F40;padding-bottom:4px;margin:20px 0 8px">${t}</h2>`;
+  const row = (l,v,hi) => `<tr style="background:${hi?'#f0f9ff':'white'}"><td style="padding:5px 10px;font-size:12px;font-weight:bold;width:45%;border:1px solid #dee2e6">${l}</td><td style="padding:5px 10px;font-size:12px;color:#366775;font-weight:bold;border:1px solid #dee2e6">${v??'—'}</td></tr>`;
+  const tbl = rows => `<table style="width:100%;border-collapse:collapse;margin-bottom:12px">${rows}</table>`;
+
+  const html = `<html><head><meta charset="utf-8"><style>body{font-family:Calibri,Arial,sans-serif;margin:32px;color:#1f2937}table{width:100%;border-collapse:collapse}th{background:#366775;color:white;padding:6px 10px;font-size:12px;text-align:left}td{padding:5px 10px;font-size:12px;border:1px solid #dee2e6}</style></head><body>
+  <h1 style="color:#366775;text-align:center;font-size:22px;margin-bottom:4px">UNIFIED CREDIT ASSESSMENT</h1>
+  <h2 style="color:#987F40;text-align:center;font-size:16px;margin-bottom:4px">${entity}</h2>
+  <p style="text-align:center;font-size:12px;color:#6b7280">Tier ${tier} (${TIER_INFO[tier]?.label}) | ${assetLabel} | ${new Date().toLocaleDateString('en-ZA')}</p>
+  <hr style="border-color:#366775;margin:16px 0">
+
+  ${h2('1. Deal Summary')}
+  ${tbl(row('Payout / Equipment Value',fmtR(payout))+row('Monthly Rental',fmtR(rental),true)+row('Annualised Rental',fmtR(rental*12))+row('Asset Type',assetLabel,true)+row('Deal Tier',`Tier ${tier} — ${TIER_INFO[tier]?.label}`))}
+
+  ${h2('2. Committee Verdict')}
+  <div style="background:${activeVerdict==='approved'?'#d1fae5':activeVerdict==='conditions'?'#fef3c7':activeVerdict==='deferred'?'#dbeafe':'#fee2e2'};border:2px solid;border-radius:8px;padding:14px;margin-bottom:12px">
+    <div style="font-size:24px;font-weight:900;color:${vi.col}">${vi.label}</div>
+    ${conditions.length>0?`<div style="margin-top:8px"><strong>Conditions:</strong><ul>${conditions.map(c=>`<li style="font-size:12px">${c}</li>`).join('')}</ul></div>`:''}
+    ${declineReasons.length>0?`<div style="margin-top:8px;color:#991b1b"><strong>Decline Reasons:</strong><ul>${declineReasons.map(d=>`<li style="font-size:12px">${d}</li>`).join('')}</ul></div>`:''}
+    ${S.verdictNote?`<p style="font-size:12px;font-style:italic;margin-top:8px">${S.verdictNote}</p>`:''}
+    <p style="font-size:11px;color:#6b7280;margin-top:8px">${new Date().toLocaleDateString('en-ZA')} — CCF Credit Committee</p>
+  </div>
+
+  ${S.synopsis?`${h2('3. Analyst Recommendation')}<p style="font-size:13px;line-height:1.7;padding-left:12px;border-left:3px solid #987F40">${S.synopsis}</p>`:''}
+
+  ${h2('4. TransUnion Assessment')}
+  ${tbl(row('Commercial Score',S.tuResult?.c2_commercial)+row('Trading Age',`${S.tuResult?.c1_age??'—'} years`,true)+row('Business Judgments',tuEv.flags.some(f=>f.text.includes('judgment'))?'⚠ Present':'None detected')+row('Business Defaults',tuEv.flags.some(f=>f.text.includes('default'))?'⚠ Present':'None detected',true)+row('Property (Business or Director)',tuEv.hasProperty?'✓ Confirmed':'Not detected')+row('Director Age',S.tuResult?.ko_dir_age?`${S.tuResult.ko_dir_age} years`:'—',true)+row('Overall Status',tuEv.hardDecline?'✕ HARD DECLINE':tuEv.isClean?'✓ CLEAN':'⚠ ADVERSE NOTED'))}
+  ${tuEv.flags.length>0?`<ul>${tuEv.flags.map(f=>`<li style="font-size:12px;color:${f.level==='red'?'#991b1b':f.level==='green'?'#065f46':'#92400e'}">${f.text}</li>`).join('')}</ul>`:''}
+
+  ${finEv.available?`
+  ${h2('5. Financial Statement Assessment')}
+  ${tbl(row('Revenue',fmtR(fin?.current?.revenue))+row('Gross Profit',`${fmtR(fin?.current?.gross_profit)} (${fin?.current?.gp_margin??'—'}% GP)`,true)+row('EBITDA',fmtR(fin?.current?.ebitda))+row('EBITDA Coverage (annualised rental)',`${finEv.ebitdaCoverage??'N/A'}x`,true)+row('NPBT',fmtR(fin?.current?.npbt))+row('NPAT',fmtR(fin?.current?.npat),true)+row('Total Equity',fmtR(finEv.equity))+row('Total Assets',fmtR(fin?.current?.total_assets),true)+row('Total Liabilities',fmtR(fin?.current?.total_liabilities))+row('Deal % of Equity',`${finEv.dealPct??'N/A'}% (guideline ≤${finEv.eqThreshold}%)`,true)+row('Assurance Level',fin?.assurance_level||'Unknown'))}
+  ${(fin?.accounting_errors||[]).length>0?`<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;padding:10px;margin:8px 0"><strong style="color:#991b1b">✕ Accounting Errors:</strong><ul>${fin.accounting_errors.map(e=>`<li style="font-size:12px;color:#7f1d1d">${e}</li>`).join('')}</ul></div>`:'<p style="font-size:12px;color:#065f46">✓ No accounting errors detected.</p>'}
+  ${(fin?.integrity_warnings||[]).length>0?`<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:10px;margin:8px 0"><strong style="color:#92400e">⚠ Integrity Warnings:</strong><ul>${fin.integrity_warnings.map(w=>`<li style="font-size:12px;color:#78350f">${w}</li>`).join('')}</ul></div>`:''}
+  `:''}
+
+  ${bankEv.available?`
+  ${h2('6. Bank Statement Assessment')}
+  ${tbl(row('Bank',bank?.bank_name)+row('Account Conduct',bank?.overall_conduct,true)+row('Returned Debits',String(bank?.rd_count??0))+row('Avg Monthly Income (excl. transfers)',fmtR(bank?.avg_monthly_income_excl_transfers||bank?.avg_monthly_income),true)+row('Income Coverage Ratio',`${bankEv.coverage??'N/A'}x`)+row('Debt-to-Income Ratio',bank?.debt_to_income_ratio!=null?`${(bank.debt_to_income_ratio*100).toFixed(1)}%`:'N/A',true)+row('Overdraft Limit',fmtR(bank?.overdraft_limit))+row('OD Breaches',String(bank?.od_times_breached??0),true)+row('Closing Balance',fmtR(bank?.closing_balance)))}
+  ${(bank?.returned_debits||[]).length>0?`<p style="font-size:12px;color:#991b1b;font-weight:bold">✕ Returned Debits:</p><ul>${bank.returned_debits.map(rd=>`<li style="font-size:12px">${rd.date} — ${rd.description} — ${fmtR(rd.amount)}</li>`).join('')}</ul>`:'<p style="font-size:12px;color:#065f46">✓ No returned debits recorded.</p>'}
+  `:''}
+
+  ${h2('7. All Risk Flags')}
+  <ul>${[...tuEv.flags.map(f=>({...f,src:'TU'})),...finEv.flags.map(f=>({...f,src:'Fin'})),...bankEv.flags.map(f=>({...f,src:'Bank'})),...(expEv.flags||[]).map(f=>({...f,src:'CCF'})),...(dealEv.flags||[]).map(f=>({...f,src:'Deal'}))].map(f=>`<li style="font-size:12px;color:${f.level==='red'?'#991b1b':f.level==='green'?'#065f46':'#92400e'}">[${f.src}] ${f.text}</li>`).join('')}</ul>
+
+  </body></html>`;
+
+  const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `UnifiedCredit_${entity.replace(/\s+/g,'_')}_${new Date().toLocaleDateString('en-ZA').replace(/\//g,'-')}.doc`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── INIT ──
+render();
+</script>
+</body>
+</html>
