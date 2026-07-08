@@ -111,7 +111,10 @@
 
 <div class="hdr np">
   <div><h1>CCF Unified Credit Engine</h1><p>TransUnion · Financials · Bank Statements · Deal Context</p></div>
-  <button class="api-btn" onclick="showModal()">⚙ API Key</button>
+  <div style="display:flex;gap:8px">
+    <button class="api-btn" onclick="viewRepo()">📁 Repository</button>
+    <button class="api-btn" onclick="showModal()">⚙ API Key</button>
+  </div>
 </div>
 
 <div class="con" id="app"></div>
@@ -123,14 +126,20 @@
 // ── STATE ──────────────────────────────────────────────────────
 var S = {
   step:'upload', apiKey:sessionStorage.getItem('ccf_api')||'',
-  mondayToken:sessionStorage.getItem('ccf_mon')||'',
+  mondayToken:localStorage.getItem('ccf_mon')||'',
+  monTokSaved: !!(localStorage.getItem('ccf_mon')||''),
   files:{tu:[],finCur:[],finPri:[],manAccs:[],bank:[]},
   payout:'',rental:'',assetType:'non-income',entity:'',
   bounceCount:0,bounceSelected:false,
   exposure:{npv:0,count:0,clientName:''},
-  rsFile:null,rsData:[],rsSearch:'',rsResults:[],rsParsing:false,rsError:'',manName:'',manNpv:'',
+  rsFile:null,rsData:(function(){try{var raw=localStorage.getItem('ccf_rs_data');return raw?JSON.parse(raw).data:[];}catch(e){return [];}})(),
+  rsFileName:(function(){try{var raw=localStorage.getItem('ccf_rs_data');return raw?JSON.parse(raw).fileName:'';}catch(e){return '';}})(),
+  rsSavedAt:(function(){try{var raw=localStorage.getItem('ccf_rs_data');return raw?JSON.parse(raw).savedAt:null;}catch(e){return null;}})(),
+  rsSearch:'',rsResults:[],rsParsing:false,rsError:'',manName:'',manNpv:'',
   dealCtx:null,dealSearch:'',dealResults:[],dealSearching:false,dealFetchError:'',
+  monColData:null,monColError:'',monColFilter:'',monColBoardName:'',
   progress:'',tuResult:null,finResult:null,bankResult:null,
+  repoSearch:'',
   synopsis:'',verdict:null,verdictNote:'',error:''
 };
 
@@ -150,8 +159,8 @@ async function claude(sys,content,max){
   max=max||4000;
   var res=await fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':S.apiKey,'anthropic-version':'2023-06-01'},
-    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:max,system:sys,messages:[{role:'user',content:content}]})
+    headers:{'Content-Type':'application/json','x-api-key':S.apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-5',max_tokens:max,system:sys,messages:[{role:'user',content:content}]})
   });
   var d=await res.json();
   if(d.error)throw new Error(d.error.message);
@@ -242,7 +251,7 @@ function evalExp(bc,sel,exp){
 function evalDeal(deal){
   if(!deal||!deal.id)return{available:false,flags:[],score:0,dealStrength:'Neutral',dealColor:'grey',summary:[]};
   var flags=[],summary=[],score=0;
-  var gmap={A:{s:15,c:'green',m:'Risk Grade A — strongest supplier profile'},'B+':{s:10,c:'green',m:'Risk Grade B+ — strong supplier profile'},B:{s:5,c:'green',m:'Risk Grade B — acceptable supplier profile'},'B-':{s:0,c:'amber',m:'Risk Grade B- — monitor supplier health'},C:{s:-8,c:'amber',m:'Risk Grade C — elevated risk; conditions apply'},D:{s:-15,c:'red',m:'Risk Grade D — high risk; likely decline'}};
+  var gmap={A:{s:15,c:'green',m:'Risk Grade A — strongest deal risk profile'},'B+':{s:10,c:'green',m:'Risk Grade B+ — strong deal risk profile'},B:{s:5,c:'green',m:'Risk Grade B — acceptable deal risk profile'},'B-':{s:0,c:'amber',m:'Risk Grade B- — monitor deal risk profile'},C:{s:-8,c:'amber',m:'Risk Grade C — elevated risk; conditions apply'},D:{s:-15,c:'red',m:'Risk Grade D — high risk; likely decline'}};
   var grade=(deal.riskGrade||'').toUpperCase().trim(),gi=gmap[grade];
   if(gi){score+=gi.s;flags.push({level:gi.c,text:gi.m});summary.push('Grade '+grade);}
   var pm=parseInt((deal.period||'').replace(/[^0-9]/g,''))||null;
@@ -277,14 +286,14 @@ function deriveVerdict(tier,tu,bk,fi,ex,dl){
   if(bk.available&&bk.hardDecline){dec=dec.concat(bk.flags.filter(function(f){return f.level==='red';}).map(function(f){return f.text;}));return{verdict:'declined',declineReasons:dec,conditions:conds,confidence:'HIGH'};}
   if(fi.available&&fi.hardDecline){dec=dec.concat(fi.flags.filter(function(f){return f.level==='red';}).map(function(f){return f.text;}));return{verdict:'declined',declineReasons:dec,conditions:conds,confidence:'HIGH'};}
   if(ex&&ex.available&&ex.bounceCount>=3){dec.push(ex.bounceCount+' bounces on existing CCF account');return{verdict:'declined',declineReasons:dec,conditions:conds,confidence:'HIGH'};}
-  if(dlD)conds.push('Risk Grade D supplier — escalate to credit committee');
+  if(dlD)conds.push('Risk Grade D deal — escalate to credit committee');
   if(expBouncy&&ex.bounceCount<3)conds.push(ex.bounceCount+' bounce(s) on existing CCF account — credit committee sign-off required');
 
   if(tier===1){
     if(tu.isClean&&tu.hasProperty){if(expBouncy){conds.push(ex.bounceCount+' bounce(s) — approve with debit order monitoring');return{verdict:'conditions',declineReasons:dec,conditions:conds,confidence:'MEDIUM'};}return{verdict:'approved',declineReasons:dec,conditions:conds,confidence:'HIGH'};}
     if(tu.isClean&&!tu.hasProperty){
       if(dlRec)return{verdict:'approved',declineReasons:dec,conditions:['No property on TU — approved on strength of supplier recourse'],confidence:'HIGH'};
-      if(dlShort&&dlStr)return{verdict:'approved',declineReasons:dec,conditions:['No property on TU — approved on short period and strong supplier grade'],confidence:'MEDIUM'};
+      if(dlShort&&dlStr)return{verdict:'approved',declineReasons:dec,conditions:['No property on TU — approved on short period and strong deal risk grade'],confidence:'MEDIUM'};
       if(expClean)return{verdict:'approved',declineReasons:dec,conditions:['No property on TU — approved on clean existing CCF conduct'],confidence:'HIGH'};
       conds.push('No property detected — bank statements required to support approval');
       if(bk.available){if(bk.isStrong)return{verdict:'approved',declineReasons:dec,conditions:['No property — approved on clean TU and satisfactory bank conduct'],confidence:'MEDIUM'};if(bk.isMarginal){conds.push('Bank conduct CONCERNING — escalate');return{verdict:'conditions',declineReasons:dec,conditions:conds,confidence:'MEDIUM'};}}
@@ -369,6 +378,12 @@ function handleRsUpload(file){
       S.rsData=Object.values(agg).filter(function(r){return r.npv>0||r.count>0;});
       S.rsSearch='';S.rsResults=[];S.rsParsing=false;
       if(S.rsData.length===0){S.rsError='File parsed but no client rows with exposure were found.';}
+      else{
+        S.rsFileName=file.name;
+        S.rsSavedAt=new Date().toISOString();
+        try{localStorage.setItem('ccf_rs_data',JSON.stringify({fileName:S.rsFileName,savedAt:S.rsSavedAt,data:S.rsData}));}
+        catch(persistErr){console.error('Could not persist rental suite data',persistErr);S.rsError='Loaded, but could not save for future sessions (storage limit?). You will need to re-upload next time.';}
+      }
     }catch(err){
       console.error(err);
       S.rsError='Failed to parse Excel file: '+err.message;
@@ -399,12 +414,61 @@ function searchRs(term){
     .sort(function(a,b){return a.score-b.score||b.npv-a.npv;})
     .slice(0,10);
 }
+function clearRsData(){
+  S.rsData=[];S.rsFile=null;S.rsFileName='';S.rsSavedAt=null;S.rsSearch='';S.rsResults=[];S.rsError='';
+  try{localStorage.removeItem('ccf_rs_data');}catch(e){}
+  render();
+}
 function selectRs(i){
   var r=S.rsResults[i];if(!r)return;
   S.exposure={npv:r.npv,count:r.count,clientName:r.name};
   S.bounceSelected=true;
   if(!S.entity)S.entity=r.name;
   S.rsResults=[];render();
+}
+
+async function listMonColumns(){
+  var tokEl=document.getElementById('mon-tok');
+  var tok=(tokEl&&tokEl.value.trim())||S.mondayToken;
+  if(!tok){alert('Paste a Monday API token into the field above first.');return;}
+  var panel=document.getElementById('mon-col-panel');
+  if(panel)panel.innerHTML='<div style="font-size:12px;color:var(--teal)">⏳ Fetching columns...</div>';
+  try{
+    var q='query($b:ID!){boards(ids:[$b]){name columns{id title type}}}';
+    var res=await fetch('https://api.monday.com/v2',{method:'POST',headers:{Authorization:tok,'Content-Type':'application/json','API-Version':'2024-01'},body:JSON.stringify({query:q,variables:{b:'18393867301'}})});
+    var data=await res.json();
+    if(data.errors){S.monColError='Monday API error: '+data.errors.map(function(e){return e.message;}).join('; ');S.monColData=null;renderMonday();return;}
+    var board=data.data&&data.data.boards&&data.data.boards[0];
+    var cols=(board&&board.columns)||[];
+    S.monColBoardName=board&&board.name||'';
+    S.monColData=cols;
+    S.monColError=cols.length===0?'No columns returned — check the token has access to this board.':'';
+    if(cols.length>0){S.mondayToken=tok;try{localStorage.setItem('ccf_mon',tok);}catch(e){}S.monTokSaved=true;}
+  }catch(e){S.monColError='Error fetching columns: '+e.message;S.monColData=null;}
+  renderMonday();
+}
+
+function renderMonColPanel(){
+  var panel=document.getElementById('mon-col-panel');
+  if(!panel)return;
+  if(S.monColError){panel.innerHTML='<div class="alr alr-r">'+esc(S.monColError)+'</div>';return;}
+  if(!S.monColData){panel.innerHTML='';return;}
+  var filter=(S.monColFilter||'').toLowerCase();
+  var rows=S.monColData.filter(function(c){return !filter||c.title.toLowerCase().indexOf(filter)>-1||c.id.toLowerCase().indexOf(filter)>-1;})
+    .sort(function(a,b){return a.title.localeCompare(b.title);});
+  panel.innerHTML='<div style="background:white;border:1px solid #93c5fd;border-radius:8px;padding:12px;margin-top:8px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+    '<div style="font-size:11px;color:#6b7280">'+S.monColData.length+' columns on "'+esc(S.monColBoardName)+'"</div>'+
+    '<button class="btn btn-o btn-s" id="mon-col-close">✕ Close</button></div>'+
+    '<input type="text" id="mon-col-filter" placeholder="Filter columns..." value="'+esc(S.monColFilter||'')+'" style="margin-bottom:8px">'+
+    '<div style="max-height:280px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:6px">'+
+    (rows.length===0?'<div style="padding:12px;font-size:12px;color:#9ca3af">No columns match "'+esc(S.monColFilter||'')+'".</div>':
+    rows.map(function(c,i){return '<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 10px;border-bottom:'+(i<rows.length-1?'1px solid #f1f5f9':'none')+';font-size:12px"><span style="font-weight:600;color:#1f2937">'+esc(c.title)+'</span><span style="color:#6b7280;font-family:monospace">'+esc(c.id)+'</span><span style="color:#9ca3af">'+esc(c.type)+'</span></div>';}).join(''))+
+    '</div></div>';
+  var closeEl=document.getElementById('mon-col-close');
+  if(closeEl)closeEl.onclick=function(){S.monColData=null;S.monColError='';S.monColFilter='';renderMonday();};
+  var filterEl=document.getElementById('mon-col-filter');
+  if(filterEl)filterEl.oninput=function(){S.monColFilter=filterEl.value;renderMonColPanel();filterEl.focus();filterEl.setSelectionRange(filterEl.value.length,filterEl.value.length);};
 }
 
 // ── MONDAY ─────────────────────────────────────────────────────
@@ -417,12 +481,12 @@ function searchMonday(term){
 async function doMonSearch(term){
   S.dealSearching=true;render();
   try{
-    var q='query($b:ID!,$t:CompareValue!){boards(ids:[$b]){items_page(limit:30,query_params:{rules:[{column_id:"text_mm2m4nbb",compare_value:$t,operator:contains_text}]}){items{id name column_values(ids:["text_mm2m4nbb","email_mm2fr2bd","color_mm3k88ck","color_mm3kdj5v","long_text_mm31hyds","long_text_mm323dd9","long_text_mm3258wv","long_text_mm3263ks","dropdown_mm315mbh","color_mm0m3dyd","status27","multiple_person_mm25xn8q"]){id text}}}}}';
+    var q='query($b:ID!,$t:CompareValue!){boards(ids:[$b]){items_page(limit:30,query_params:{rules:[{column_id:"text_mm2m4nbb",compare_value:$t,operator:contains_text}]}){items{id name column_values(ids:["text_mm2m4nbb","email_mm2fr2bd","color_mm3k88ck","color_mm3kdj5v","long_text_mm31hyds","long_text_mm323dd9","long_text_mm3258wv","long_text_mm3263ks","dropdown_mm315mbh","color_mm0m3dyd","status27","multiple_person_mm25xn8q","payout"]){id text}}}}}';
     var res=await fetch('https://api.monday.com/v2',{method:'POST',headers:{Authorization:S.mondayToken,'Content-Type':'application/json','API-Version':'2024-01'},body:JSON.stringify({query:q,variables:{b:'18393867301',t:term}})});
     var data=await res.json();
     var items=(data.data&&data.data.boards&&data.data.boards[0]&&data.data.boards[0].items_page&&data.data.boards[0].items_page.items)||[];
     function col(item,id){var cv=item.column_values.find(function(c){return c.id===id;});return cv?cv.text:'';}
-    S.dealResults=items.map(function(item){return{id:item.id,itemName:item.name,client:col(item,'text_mm2m4nbb'),supplierEmail:col(item,'email_mm2fr2bd'),riskGrade:col(item,'color_mm3k88ck'),financialStrength:col(item,'color_mm3kdj5v'),equipment:col(item,'long_text_mm31hyds'),rental:col(item,'long_text_mm323dd9'),period:col(item,'long_text_mm3258wv'),escalation:col(item,'long_text_mm3263ks'),approvalTerms:col(item,'dropdown_mm315mbh'),evidenceTier:col(item,'color_mm0m3dyd'),dealStatus:col(item,'status27'),bdo:col(item,'multiple_person_mm25xn8q')};}).filter(function(d){return d.client;});
+    S.dealResults=items.map(function(item){return{id:item.id,itemName:item.name,client:col(item,'text_mm2m4nbb'),supplierEmail:col(item,'email_mm2fr2bd'),riskGrade:col(item,'color_mm3k88ck'),financialStrength:col(item,'color_mm3kdj5v'),equipment:col(item,'long_text_mm31hyds'),rental:col(item,'long_text_mm323dd9'),period:col(item,'long_text_mm3258wv'),escalation:col(item,'long_text_mm3263ks'),approvalTerms:col(item,'dropdown_mm315mbh'),evidenceTier:col(item,'color_mm0m3dyd'),dealStatus:col(item,'status27'),bdo:col(item,'multiple_person_mm25xn8q'),payout:col(item,'payout')};}).filter(function(d){return d.client;});
   }catch(e){console.error(e);S.dealResults=[];}
   S.dealSearching=false;render();
 }
@@ -438,15 +502,16 @@ async function fetchMonday(){
   if(!/^\d+$/.test(itemId)){S.dealFetchError='Could not extract a valid item ID.';renderMonday();return;}
   S.dealSearching=true;S.dealFetchError='';renderMonday();
   try{
-    var q='query($id:ID!){items(ids:[$id]){id name column_values(ids:["text_mm2m4nbb","email_mm2fr2bd","color_mm3k88ck","color_mm3kdj5v","long_text_mm31hyds","long_text_mm323dd9","long_text_mm3258wv","long_text_mm3263ks","dropdown_mm315mbh","color_mm0m3dyd","status27","multiple_person_mm25xn8q","registration_no_"]){id text}}}';
+    var q='query($id:ID!){items(ids:[$id]){id name column_values(ids:["text_mm2m4nbb","email_mm2fr2bd","color_mm3k88ck","color_mm3kdj5v","long_text_mm31hyds","long_text_mm323dd9","long_text_mm3258wv","long_text_mm3263ks","dropdown_mm315mbh","color_mm0m3dyd","status27","multiple_person_mm25xn8q","registration_no_","payout"]){id text}}}';
     var res=await fetch('https://api.monday.com/v2',{method:'POST',headers:{Authorization:S.mondayToken,'Content-Type':'application/json','API-Version':'2024-01'},body:JSON.stringify({query:q,variables:{id:itemId}})});
     var data=await res.json();
     var item=data.data&&data.data.items&&data.data.items[0];
     if(!item){S.dealFetchError='No item found with ID '+itemId+'.';S.dealSearching=false;renderMonday();return;}
     function col(id){var cv=item.column_values.find(function(c){return c.id===id;});return cv?cv.text:'';}
-    S.dealCtx={id:item.id,itemName:item.name,client:col('text_mm2m4nbb'),supplierEmail:col('email_mm2fr2bd'),riskGrade:col('color_mm3k88ck'),financialStrength:col('color_mm3kdj5v'),equipment:col('long_text_mm31hyds'),rental:col('long_text_mm323dd9'),period:col('long_text_mm3258wv'),escalation:col('long_text_mm3263ks'),approvalTerms:col('dropdown_mm315mbh'),evidenceTier:col('color_mm0m3dyd'),dealStatus:col('status27'),bdo:col('multiple_person_mm25xn8q'),regNo:col('registration_no_')};
-    if(!S.entity&&S.dealCtx.client)S.entity=S.dealCtx.client;
+    S.dealCtx={id:item.id,itemName:item.name,client:col('text_mm2m4nbb'),supplierEmail:col('email_mm2fr2bd'),riskGrade:col('color_mm3k88ck'),financialStrength:col('color_mm3kdj5v'),equipment:col('long_text_mm31hyds'),rental:col('long_text_mm323dd9'),period:col('long_text_mm3258wv'),escalation:col('long_text_mm3263ks'),approvalTerms:col('dropdown_mm315mbh'),evidenceTier:col('color_mm0m3dyd'),dealStatus:col('status27'),bdo:col('multiple_person_mm25xn8q'),regNo:col('registration_no_'),payout:col('payout')};
+    if(!S.entity){var nm=S.dealCtx.client||S.dealCtx.itemName;if(nm)S.entity=nm;}
     if(!S.rental&&S.dealCtx.rental){var r=parseFloat(S.dealCtx.rental.replace(/[^0-9.]/g,''));if(!isNaN(r)&&r>0)S.rental=String(r);}
+    if(!S.payout&&S.dealCtx.payout){var p=parseFloat(S.dealCtx.payout.replace(/[^0-9.]/g,''));if(!isNaN(p)&&p>0)S.payout=String(p);}
     S.dealResults=[];
   }catch(e){S.dealFetchError='Monday API error: '+e.message;}
   S.dealSearching=false;render();
@@ -454,9 +519,25 @@ async function fetchMonday(){
 
 function selectDeal(i){
   S.dealCtx=S.dealResults[i];
-  if(!S.entity&&S.dealCtx)S.entity=S.dealCtx.client;
+  if(!S.entity&&S.dealCtx){var nm=S.dealCtx.client||S.dealCtx.itemName;if(nm)S.entity=nm;}
   if(!S.rental&&S.dealCtx&&S.dealCtx.rental){var r=parseFloat(S.dealCtx.rental.replace(/[^0-9.]/g,''));if(!isNaN(r)&&r>0)S.rental=String(r);}
+  if(!S.payout&&S.dealCtx&&S.dealCtx.payout){var p=parseFloat(S.dealCtx.payout.replace(/[^0-9.]/g,''));if(!isNaN(p)&&p>0)S.payout=String(p);}
   S.dealResults=[];render();
+}
+
+function saveMonToken(){
+  var tokEl=document.getElementById('mon-tok');
+  var val=(tokEl?tokEl.value:S.mondayToken||'').trim();
+  S.mondayToken=val;
+  try{localStorage.setItem('ccf_mon',S.mondayToken);}catch(e){}
+  S.monTokSaved=!!val;
+  renderMonday();
+}
+function clearMonToken(){
+  S.mondayToken='';
+  S.monTokSaved=false;
+  try{localStorage.removeItem('ccf_mon');}catch(e){}
+  renderMonday();
 }
 
 // ── MONDAY RENDER (DOM-based to avoid template literal nesting) ─
@@ -464,10 +545,27 @@ function renderMonday(){
   var el=document.getElementById('mon-body');
   if(!el)return;
 
+  var active=document.activeElement;
+  var focusId=(active&&el.contains(active)&&active.id)?active.id:null;
+  var selStart=(focusId&&typeof active.selectionStart==='number')?active.selectionStart:null;
+  var selEnd=(focusId&&typeof active.selectionEnd==='number')?active.selectionEnd:null;
+  var scrollY=window.scrollY;
+  function doRestore(){
+    if(focusId){
+      var ne=document.getElementById(focusId);
+      if(ne){
+        ne.focus({preventScroll:true});
+        if(selStart!=null&&ne.setSelectionRange){try{ne.setSelectionRange(selStart,selEnd);}catch(e){}}
+      }
+    }
+    window.scrollTo(0,scrollY);
+  }
+
   if(S.dealCtx&&S.dealCtx.id){
     var gc={A:'#d1fae5','B+':'#d1fae5',B:'#dbeafe','B-':'#fef3c7',C:'#fef3c7',D:'#fee2e2'};
     var fields=[
-      ['Supplier Risk Grade',S.dealCtx.riskGrade,true],
+      ['Risk Grade',S.dealCtx.riskGrade,true],
+      ['Payout',S.dealCtx.payout,false],
       ['Period',S.dealCtx.period,false],
       ['Rental on Deal',S.dealCtx.rental,false],
       ['Equipment',S.dealCtx.equipment,false],
@@ -489,6 +587,7 @@ function renderMonday(){
       '<button class="btn btn-o btn-s" id="mon-change">Change</button></div>'+
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">'+cards+'</div></div>';
     document.getElementById('mon-change').onclick=function(){S.dealCtx=null;S.dealSearch='';S.dealResults=[];S.dealFetchError='';render();};
+    doRestore();
     return;
   }
 
@@ -519,8 +618,16 @@ function renderMonday(){
     resHtml='<div style="font-size:12px;color:#6b7280;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;margin-top:8px">No deals found for "'+esc(S.dealSearch)+'".</div>';
   }
 
-  el.innerHTML='<p style="font-size:12px;color:#6b7280;margin-bottom:12px">Search Applications 2026 board to pull supplier risk grade, period, recourse and equipment. Feed directly into the credit decision.</p>'+
-    '<div class="fg"><input type="password" id="mon-tok" placeholder="Monday.com API token" value="'+esc(S.mondayToken||'')+'"></div>'+
+  el.innerHTML='<p style="font-size:12px;color:#6b7280;margin-bottom:12px">Search Applications 2026 board to pull deal risk grade, period, recourse and equipment. Feed directly into the credit decision.</p>'+
+    '<div class="fg"><label>Monday.com API Token</label>'+
+    '<div style="display:flex;gap:8px">'+
+    '<input type="password" id="mon-tok" placeholder="Monday.com API token" value="'+esc(S.mondayToken||'')+'" style="flex:1">'+
+    '<button class="btn btn-p btn-s" id="mon-tok-save">'+(S.monTokSaved?'✓ Saved':'Connect')+'</button>'+
+    '</div>'+
+    (S.monTokSaved?'<div style="font-size:11px;color:#059669;margin-top:4px">✓ Token saved on this device — will stay connected on future visits · <a href="#" id="mon-tok-clear" style="color:#9ca3af;text-decoration:underline">Disconnect</a></div>':'<div style="font-size:11px;color:#9ca3af;margin-top:4px">Paste your token, then click Connect to save it permanently on this device.</div>')+
+    '<div style="margin-top:4px"><a href="#" id="mon-list-cols" style="font-size:11px;color:#9ca3af;text-decoration:underline">List all columns on this board (find a column ID)</a></div>'+
+    '<div id="mon-col-panel"></div>'+
+    '</div>'+
     '<div style="display:flex;gap:8px;margin-bottom:6px"><input type="text" id="mon-id" placeholder="Paste Monday deal URL or item ID..." style="flex:1"><button class="btn btn-p btn-s" id="mon-fetch-btn">Fetch →</button></div>'+
     '<div style="font-size:11px;color:#9ca3af;margin-bottom:12px">e.g. https://customcapital.monday.com/boards/18393867301/pulses/12345678</div>'+
     (S.dealFetchError?'<div class="alr alr-r" style="margin-bottom:10px">'+esc(S.dealFetchError)+'</div>':'')+
@@ -532,7 +639,15 @@ function renderMonday(){
 
   // Wire events
   var tokEl=document.getElementById('mon-tok');
-  if(tokEl)tokEl.oninput=function(){S.mondayToken=tokEl.value;try{sessionStorage.setItem('ccf_mon',S.mondayToken);}catch(e){}};
+  if(tokEl)tokEl.oninput=function(){S.monTokSaved=false;var btn=document.getElementById('mon-tok-save');if(btn)btn.textContent='Connect';var note=tokEl.parentElement.nextElementSibling;if(note)note.textContent='Token changed — click Connect to save.';};
+  if(tokEl)tokEl.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();saveMonToken();}};
+  var tokSaveBtn=document.getElementById('mon-tok-save');
+  if(tokSaveBtn)tokSaveBtn.onclick=saveMonToken;
+  var tokClearEl=document.getElementById('mon-tok-clear');
+  if(tokClearEl)tokClearEl.onclick=function(e){e.preventDefault();clearMonToken();};
+  var listColsEl=document.getElementById('mon-list-cols');
+  if(listColsEl)listColsEl.onclick=function(e){e.preventDefault();listMonColumns();};
+  renderMonColPanel();
   var fetchBtn=document.getElementById('mon-fetch-btn');
   if(fetchBtn)fetchBtn.onclick=fetchMonday;
   var idEl=document.getElementById('mon-id');
@@ -550,6 +665,7 @@ function renderMonday(){
     row.onmouseout=function(){row.style.background='white';};
     row.onclick=function(){selectDeal(i);};
   });
+  doRestore();
 }
 
 // ── PROMPTS ────────────────────────────────────────────────────
@@ -600,9 +716,11 @@ async function runAnalysis(){
 
     S.progress='Generating synopsis...';render();
     var tuEv=evalTU(S.tuResult),bkEv=evalBank(S.bankResult,rental),fiEv=evalFin(S.finResult,rental,payout,S.assetType);
-    var vr=deriveVerdict(tier,tuEv,bkEv,fiEv,evalExp(S.bounceCount,S.bounceSelected,S.exposure),evalDeal(S.dealCtx));
+    var exEv=evalExp(S.bounceCount,S.bounceSelected,S.exposure),dlEv=evalDeal(S.dealCtx);
+    var vr=deriveVerdict(tier,tuEv,bkEv,fiEv,exEv,dlEv);
     var ctx=buildSynCtx(tuEv,bkEv,fiEv,vr.verdict,payout,rental,tier);
     S.synopsis=await claude(P_SYN,ctx,600);
+    saveDealToRepo(tier,payout,rental,tuEv,fiEv,bkEv,exEv,dlEv,vr);
     S.step='review';
   }catch(ex){S.error='Analysis failed: '+ex.message;S.step='upload';}
   render();
@@ -621,6 +739,135 @@ function buildSynCtx(tu,bk,fi,verdict,payout,rental,tier){
     '\nVerdict: '+verdict.toUpperCase();
 }
 
+// ── DEAL REPOSITORY ────────────────────────────────────────────
+var REPO_KEY='ccf_deal_repo';
+function getRepo(){
+  try{var raw=localStorage.getItem(REPO_KEY);return raw?JSON.parse(raw):[];}catch(e){return [];}
+}
+function setRepo(arr){
+  try{localStorage.setItem(REPO_KEY,JSON.stringify(arr));}catch(e){console.error('Repo save failed',e);}
+}
+function saveDealToRepo(tier,payout,rental,tu,fi,bk,ex,dl,vr){
+  var entity=S.entity||(S.tuResult&&S.tuResult.entity)||'Unknown';
+  var av=S.verdict||vr.verdict;
+  var rec={
+    id:'d'+Date.now()+Math.random().toString(36).slice(2,7),
+    savedAt:new Date().toISOString(),
+    entity:entity,
+    tier:tier,tierLabel:TINFO[tier]&&TINFO[tier].label,
+    payout:payout,rental:rental,
+    assetType:S.assetType,
+    verdict:av,
+    tuScore:S.tuResult&&S.tuResult.c2_commercial!=null?S.tuResult.c2_commercial:null,
+    tuAge:S.tuResult&&S.tuResult.c1_age!=null?S.tuResult.c1_age:null,
+    tuProperty:!!tu.hasProperty,
+    tuClean:!!tu.isClean,
+    finAvailable:!!fi.available,
+    finEbitdaCoverage:fi.available?fi.ebitdaCoverage:null,
+    finEquity:fi.available?fi.equity:null,
+    finDealPct:fi.available?fi.dealPct:null,
+    bankAvailable:!!bk.available,
+    bankConduct:bk.available?bk.conduct:null,
+    bankRDCount:bk.available?bk.rdCount:null,
+    bankCoverage:bk.available?bk.coverage:null,
+    exExisting:!!(ex.available&&ex.isExisting),
+    exNpv:ex.available?ex.npv:null,
+    exBounces:ex.available?ex.bounceCount:null,
+    dealLinked:!!dl.available,
+    dealGrade:dl.available?dl.grade:null,
+    conditions:vr.conditions||[],
+    declineReasons:vr.declineReasons||[],
+    synopsis:S.synopsis||''
+  };
+  var repo=getRepo();
+  repo.push(rec);
+  setRepo(repo);
+}
+function deleteRepoEntry(id){
+  if(!confirm('Delete this saved deal from the repository? This cannot be undone.'))return;
+  setRepo(getRepo().filter(function(r){return r.id!==id;}));
+  render();
+}
+function clearRepo(){
+  if(!confirm('Delete ALL saved deals from the repository? This cannot be undone.'))return;
+  setRepo([]);
+  render();
+}
+function viewRepo(){S.step='repo';render();}
+function exportRepoCsv(){
+  var repo=getRepo();
+  if(repo.length===0){alert('No saved deals to export.');return;}
+  var cols=['savedAt','entity','tier','payout','rental','assetType','verdict','tuScore','tuAge','tuProperty','tuClean','finEbitdaCoverage','finEquity','finDealPct','bankConduct','bankRDCount','bankCoverage','exExisting','exNpv','exBounces','dealGrade','conditions','declineReasons'];
+  var csvEsc=function(v){if(v==null)return'';var s=Array.isArray(v)?v.join(' | '):String(v);return '"'+s.replace(/"/g,'""')+'"';};
+  var lines=[cols.join(',')].concat(repo.map(function(r){return cols.map(function(c){return csvEsc(r[c]);}).join(',');}));
+  var blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');a.href=url;a.download='CCF_Deal_Repository_'+new Date().toLocaleDateString('en-ZA').replace(/\//g,'-')+'.csv';a.click();URL.revokeObjectURL(url);
+}
+
+function repoVerdictBadge(v){
+  var vi=VINFO[v];
+  if(!vi)return '<span class="bdg bgr">—</span>';
+  var cls=v==='approved'?'bg':v==='conditions'?'ba':v==='declined'?'br':'bgr';
+  return '<span class="bdg '+cls+'">'+vi.label+'</span>';
+}
+
+function renderRepo(){
+  var repo=getRepo().slice().sort(function(a,b){return new Date(b.savedAt)-new Date(a.savedAt);});
+  var filter=(S.repoSearch||'').toLowerCase();
+  var rows=repo.filter(function(r){return !filter||(r.entity||'').toLowerCase().indexOf(filter)>-1;});
+
+  var summary='<div class="card"><div class="cb" style="padding:12px 16px"><div style="display:grid;grid-template-columns:repeat(4,1fr);border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">'+
+    [['Saved Deals',String(repo.length),'total in repository'],
+     ['Approved',String(repo.filter(function(r){return r.verdict==='approved';}).length),'incl. conditions'],
+     ['Declined',String(repo.filter(function(r){return r.verdict==='declined';}).length),''],
+     ['Deferred',String(repo.filter(function(r){return r.verdict==='deferred';}).length),'']
+    ].map(function(x,i,arr){return '<div style="padding:12px 14px;background:#f8fafc;'+(i<arr.length-1?'border-right:1px solid #e2e8f0':'')+'"><div style="font-size:10px;color:#6b7280;font-weight:600;margin-bottom:2px">'+x[0]+'</div><div style="font-size:16px;font-weight:800;color:var(--teal)">'+x[1]+'</div><div style="font-size:10px;color:#9ca3af">'+x[2]+'</div></div>';}).join('')+
+    '</div></div></div>';
+
+  if(repo.length===0){
+    return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px" class="np">'+
+      '<h2 style="color:var(--teal);font-size:20px">Deal Repository</h2>'+
+      '<button class="btn btn-o btn-s" onclick="S.step=\'upload\';render()">← Back</button></div>'+
+      '<div class="card"><div class="cb" style="text-align:center;padding:40px;color:#9ca3af;font-size:13px">No deals saved yet. Completed assessments are saved here automatically.</div></div>';
+  }
+
+  var rowsHtml=rows.map(function(r){
+    var d=new Date(r.savedAt);
+    var dateStr=d.toLocaleDateString('en-ZA')+' '+d.toLocaleTimeString('en-ZA',{hour:'2-digit',minute:'2-digit'});
+    return '<div style="border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;overflow:hidden">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#f8fafc;cursor:pointer" onclick="var d=document.getElementById(\'repo-d-'+r.id+'\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'">'+
+      '<div><span style="font-weight:700;color:#1f2937;font-size:13px">'+esc(r.entity)+'</span> <span style="font-size:11px;color:#9ca3af">· Tier '+r.tier+' · R'+fmt(r.payout)+' · '+esc(dateStr)+'</span></div>'+
+      '<div style="display:flex;gap:8px;align-items:center">'+repoVerdictBadge(r.verdict)+
+      '<button class="btn btn-o btn-s" onclick="event.stopPropagation();deleteRepoEntry(\''+r.id+'\')" style="padding:3px 8px;font-size:11px">✕</button></div></div>'+
+      '<div id="repo-d-'+r.id+'" style="display:none;padding:12px 14px;border-top:1px solid #e2e8f0">'+
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">'+
+      [['TransUnion',(r.tuScore!=null?'Score '+r.tuScore:'—')+(r.tuAge!=null?' · Age '+r.tuAge+'yr':'')+' · '+(r.tuProperty?'Property Y':'Property N')+' · '+(r.tuClean?'Clean':'Adverse')],
+       ['Financials',r.finAvailable?'EBITDA cov '+(r.finEbitdaCoverage||'N/A')+'x · Equity '+fmtR(r.finEquity)+' · '+(r.finDealPct||'N/A')+'% of equity':'Not provided'],
+       ['Bank',r.bankAvailable?'Conduct '+r.bankConduct+' · RDs '+r.bankRDCount+' · Cov '+(r.bankCoverage||'N/A')+'x':'Not provided'],
+       ['CCF Exposure',r.exExisting?fmtR(r.exNpv)+' · Bounces '+r.exBounces:'New client'],
+       ['Deal Context',r.dealLinked?'Grade '+r.dealGrade:'Not linked'],
+       ['Asset Type',r.assetType==='income'?'Income-Generating':'Non-Income-Generating']
+      ].map(function(x){return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;font-weight:600">'+x[0]+'</div><div style="font-size:12px;color:#1f2937">'+esc(x[1])+'</div></div>';}).join('')+
+      '</div>'+
+      (r.conditions&&r.conditions.length>0?'<div style="margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:#92400e">Conditions:</div><ul style="padding-left:16px">'+r.conditions.map(function(c){return '<li style="font-size:12px;color:#78350f">'+esc(c)+'</li>';}).join('')+'</ul></div>':'')+
+      (r.declineReasons&&r.declineReasons.length>0?'<div style="margin-bottom:8px"><div style="font-size:11px;font-weight:700;color:#991b1b">Decline Reasons:</div><ul style="padding-left:16px">'+r.declineReasons.map(function(dr){return '<li style="font-size:12px;color:#7f1d1d">'+esc(dr)+'</li>';}).join('')+'</ul></div>':'')+
+      (r.synopsis?'<div style="font-size:12px;color:#374151;line-height:1.6;padding-left:10px;border-left:3px solid #987F40;margin-top:8px">'+esc(r.synopsis)+'</div>':'')+
+      '</div></div>';
+  }).join('');
+
+  return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px" class="np">'+
+    '<h2 style="color:var(--teal);font-size:20px">Deal Repository</h2>'+
+    '<div style="display:flex;gap:8px"><button class="btn btn-o btn-s" onclick="exportRepoCsv()">📄 Export CSV</button>'+
+    (repo.length>0?'<button class="btn btn-o btn-s" onclick="clearRepo()" style="color:#dc2626;border-color:#fca5a5">Clear All</button>':'')+
+    '<button class="btn btn-o btn-s" onclick="S.step=\'upload\';render()">← Back</button></div></div>'+
+    summary+
+    '<div class="card"><div class="cb">'+
+    '<input type="text" id="repo-search" value="'+esc(S.repoSearch||'')+'" placeholder="Search by entity name..." oninput="S.repoSearch=this.value;render()" style="margin-bottom:12px">'+
+    (rows.length===0?'<div style="text-align:center;padding:20px;color:#9ca3af;font-size:13px">No deals match "'+esc(S.repoSearch)+'".</div>':rowsHtml)+
+    '</div></div>';
+}
+
 // ── RENDER ─────────────────────────────────────────────────────
 function badge(s){return{green:'<span class="bdg bg">✓ Strong</span>',amber:'<span class="bdg ba">⚠ Marginal</span>',red:'<span class="bdg br">✕ Concern</span>',grey:'<span class="bdg bgr">— N/A</span>'}[s]||'<span class="bdg bgr">— N/A</span>';}
 
@@ -634,10 +881,26 @@ var VINFO={
 function render(){
   var app=document.getElementById('app');
   if(!app)return;
-  if(S.step==='loading'){app.innerHTML=renderLoading();return;}
-  if(S.step==='review'){app.innerHTML=renderReview();return;}
+  var active=document.activeElement;
+  var focusId=(active&&active.id)?active.id:null;
+  var selStart=(focusId&&typeof active.selectionStart==='number')?active.selectionStart:null;
+  var selEnd=(focusId&&typeof active.selectionEnd==='number')?active.selectionEnd:null;
+  var scrollY=window.scrollY;
+  function doRestore(){
+    if(focusId){
+      var el2=document.getElementById(focusId);
+      if(el2){
+        el2.focus({preventScroll:true});
+        if(selStart!=null&&el2.setSelectionRange){try{el2.setSelectionRange(selStart,selEnd);}catch(e){}}
+      }
+    }
+    window.scrollTo(0,scrollY);
+  }
+  if(S.step==='loading'){app.innerHTML=renderLoading();doRestore();return;}
+  if(S.step==='review'){app.innerHTML=renderReview();doRestore();return;}
+  if(S.step==='repo'){app.innerHTML=renderRepo();doRestore();return;}
   app.innerHTML=renderUpload();
-  setTimeout(renderMonday,0);
+  setTimeout(function(){renderMonday();doRestore();},0);
 }
 
 function renderLoading(){
@@ -706,7 +969,7 @@ function renderExposureSection(){
     if(S.rsResults.length>0){
       resHtml='<div style="background:white;border:1px solid #c4b5fd;border-radius:6px;overflow:hidden;margin-bottom:8px;margin-top:8px">';
       S.rsResults.forEach(function(r,i){
-        resHtml+='<div id="rs-r-'+i+'" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:'+(i<S.rsResults.length-1?'1px solid #ede9fe':'none')+';cursor:pointer">'+
+        resHtml+='<div id="rs-r-'+i+'" onclick="selectRs('+i+')" onmouseover="this.style.background=\'#f5f3ff\'" onmouseout="this.style.background=\'white\'" style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:'+(i<S.rsResults.length-1?'1px solid #ede9fe':'none')+';cursor:pointer;background:white">'+
           '<div><span style="font-weight:600;color:#1f2937;font-size:13px">'+esc(r.name)+'</span>'+
           (r.score>0?'<span style="margin-left:8px;font-size:10px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:3px;padding:1px 6px;font-weight:600">close match</span>':'<span style="margin-left:8px;font-size:10px;background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;border-radius:3px;padding:1px 6px;font-weight:600">exact</span>')+
           '</div><div style="text-align:right"><div style="color:#5b21b6;font-weight:700;font-size:13px">'+fmtR(r.npv)+'</div>'+(r.count>1?'<div style="font-size:10px;color:#9ca3af">'+r.count+' deals</div>':'')+
@@ -716,9 +979,13 @@ function renderExposureSection(){
     }else if(S.rsSearch&&S.rsSearch.length>=2){
       resHtml='<div class="alr alr-g" style="margin-top:8px">✓ No existing exposure for "'+esc(S.rsSearch)+'" — <button class="btn btn-o btn-s" onclick="S.bounceSelected=true;S.exposure={npv:0,count:0,clientName:S.rsSearch};if(!S.entity)S.entity=S.rsSearch;render()">Confirm new client</button></div>';
     }
-    body='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
-      '<div style="font-size:12px;color:#065f46;background:#ecfdf5;border:1px solid #86efac;border-radius:5px;padding:4px 10px">✓ '+S.rsData.length+' clients loaded from '+esc(S.rsFile&&S.rsFile.name||'file')+'</div>'+
-      '<button class="btn btn-o btn-s" onclick="S.rsData=[];S.rsFile=null;S.rsSearch=\'\';S.rsResults=[];S.rsError=\'\';render()">Change file</button></div>'+
+    var d=S.rsSavedAt?new Date(S.rsSavedAt):null;
+    var daysOld=d?Math.floor((Date.now()-d.getTime())/86400000):null;
+    var stale=daysOld!=null&&daysOld>35;
+    body='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+      '<div style="font-size:12px;color:#065f46;background:#ecfdf5;border:1px solid #86efac;border-radius:5px;padding:4px 10px">✓ '+S.rsData.length+' clients loaded from '+esc(S.rsFileName||(S.rsFile&&S.rsFile.name)||'file')+' — saved on this device</div>'+
+      '<button class="btn btn-o btn-s" onclick="clearRsData()">Change file</button></div>'+
+      (d?'<div style="font-size:11px;color:'+(stale?'#d97706':'#9ca3af')+';margin-bottom:10px">'+(stale?'⚠ ':'')+'Last updated '+d.toLocaleDateString('en-ZA')+(stale?' — '+daysOld+' days ago, consider re-uploading this month export':'')+'</div>':'')+
       '<input type="text" id="rs-search" value="'+esc(S.rsSearch||'')+'" placeholder="Type client name to search..." oninput="S.rsSearch=this.value;searchRs(this.value);render()">'+
       resHtml;
   } else {
