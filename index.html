@@ -325,17 +325,28 @@ function evalBank(bank,rental){
 
 function evalFin(fin,rental,payout,at){
   var eqT=at==='income'?30:10;
-  if(!fin||!fin.current)return{available:false,flags:[],isStrong:false,isMarginal:false,hardDecline:false,ebitdaCoverage:null,equity:null,dealPct:null,eqMeets:null,eqThreshold:eqT};
-  var c=fin.current,ar=rental*12;
+  if(!fin||!fin.current)return{available:false,flags:[],isStrong:false,isMarginal:false,hardDecline:false,ebitdaCoverage:null,equity:null,dealPct:null,eqMeets:null,eqThreshold:eqT,quickRatio:null,tangibleEquity:null,revenueGrowth:null};
+  var c=fin.current,p=fin.prior,ar=rental*12;
   var cov=c.ebitda&&ar?parseFloat((c.ebitda/ar).toFixed(2)):null;
-  var eq=c.total_equity,dp=eq&&payout?parseFloat(((payout/eq)*100).toFixed(1)):null;
-  var negEq=eq!==null&&eq<0,eqM=dp!==null?dp<=eqT:null,flags=[];
-  if(negEq)flags.push({level:'red',text:'Negative equity ('+fmtR(eq)+') — insolvent entity'});
+  var tangibleEquity=c.tangible_net_equity!=null?c.tangible_net_equity:(c.total_equity!=null&&c.revaluation_reserve?c.total_equity-c.revaluation_reserve:c.total_equity);
+  var eq=tangibleEquity,dp=eq&&payout?parseFloat(((payout/eq)*100).toFixed(1)):null;
+  var negEq=c.total_equity!=null&&c.total_equity<0,eqM=dp!==null?dp<=eqT:null,flags=[];
+  var quickRatio=c.quick_ratio!=null?c.quick_ratio:(c.current_assets!=null&&c.current_liabilities!=null&&c.current_liabilities!==0?parseFloat(((c.current_assets-(c.inventory||0))/c.current_liabilities).toFixed(2)):null);
+  var revenueGrowth=c.revenue&&p&&p.revenue?parseFloat(((c.revenue-p.revenue)/p.revenue*100).toFixed(1)):null;
+  var revenueDeclinePct=revenueGrowth!==null&&revenueGrowth<0?Math.abs(revenueGrowth):null;
+  var isRevenueDecline=revenueDeclinePct!==null&&revenueDeclinePct>=10;
+  var isNegativeLiquidity=quickRatio!==null&&quickRatio<0;
+  if(negEq)flags.push({level:'red',text:'Negative equity ('+fmtR(c.total_equity)+') — insolvent entity; CCF policy prohibits lending to insolvent entities'});
   if(cov!==null&&cov<1.0)flags.push({level:cov<0.8?'red':'amber',text:'EBITDA coverage '+cov+'x — '+(cov<0.8?'insufficient':'marginal')});
-  if(!eqM&&dp!==null)flags.push({level:'amber',text:'Deal is '+dp+'% of equity — exceeds ≤'+eqT+'% guideline'});
+  if(!eqM&&dp!==null)flags.push({level:'amber',text:'Deal is '+dp+'% of tangible equity — exceeds ≤'+eqT+'% guideline'});
   if(fin.assurance_level==='Unaudited')flags.push({level:'amber',text:'Financials are unaudited'});
   if((fin.accounting_errors||[]).length>0)flags.push({level:'red',text:fin.accounting_errors.length+' accounting error(s) detected'});
-  return{available:true,ebitdaCoverage:cov,equity:eq,dealPct:dp,eqThreshold:eqT,eqMeets:eqM,negativeEquity:negEq,isStrong:!negEq&&cov!==null&&cov>=1.5&&eqM!==false,isMarginal:!negEq&&cov!==null&&cov>=0.8&&cov<1.5,hardDecline:negEq,flags:flags,assurance:fin.assurance_level};
+  if(isRevenueDecline)flags.push({level:'red',text:'Revenue declined '+revenueDeclinePct+'% YoY (from '+fmtR(p.revenue)+' to '+fmtR(c.revenue)+') — significant deterioration in trading performance'});
+  if(isNegativeLiquidity)flags.push({level:'amber',text:'Negative liquidity — quick ratio '+quickRatio+'x; current assets net of inventory insufficient to cover current liabilities'});
+  else if(quickRatio!==null&&quickRatio<0.5)flags.push({level:'amber',text:'Quick ratio '+quickRatio+'x — below 0.5x, liquidity stress'});
+  var integrityFails=(fin.integrity_checks||[]).filter(function(ic){return ic.result==='FAIL';});
+  if(integrityFails.length>0)flags.push({level:'red',text:integrityFails.length+' accounting integrity check(s) failed'});
+  return{available:true,ebitdaCoverage:cov,equity:eq,rawEquity:c.total_equity,dealPct:dp,eqThreshold:eqT,eqMeets:eqM,negativeEquity:negEq,quickRatio:quickRatio,isNegativeLiquidity:isNegativeLiquidity,revenueGrowth:revenueGrowth,isRevenueDecline:isRevenueDecline,revenueDeclinePct:revenueDeclinePct,tangibleEquity:tangibleEquity,isStrong:!negEq&&cov!==null&&cov>=1.5&&eqM!==false&&!isRevenueDecline,isMarginal:!negEq&&cov!==null&&cov>=0.8&&cov<1.5,hardDecline:negEq,flags:flags,assurance:fin.assurance_level};
 }
 
 function evalExp(bc,sel,exp){
@@ -407,6 +418,8 @@ function deriveVerdict(tier,tu,bk,fi,ex,dl){
     if(!tu.hasProperty)conds.push(expClean?'No property — mitigated by clean CCF conduct; suretyship recommended':'No property — obtain additional security or suretyship');
     if(bk.isMarginal)conds.push('Bank conduct CONCERNING — obtain updated statements before drawdown');
     if(bk.coverage!==null&&bk.coverage<1.5&&bk.coverage>=1.0)conds.push('Bank coverage marginal at '+bk.coverage+'x — monitor post-approval');
+    if(fi&&fi.available&&fi.isRevenueDecline)conds.push('Revenue declined '+fi.revenueDeclinePct+'% YoY — credit committee to assess trading trajectory before approval');
+    if(fi&&fi.available&&fi.isNegativeLiquidity)conds.push('Negative quick ratio ('+fi.quickRatio+'x) — critical liquidity risk, obtain cash flow forecast');
     if(conds.length===0)return{verdict:'approved',declineReasons:dec,conditions:conds,confidence:'HIGH'};
     return{verdict:'conditions',declineReasons:dec,conditions:conds,confidence:'MEDIUM'};
   }
@@ -415,6 +428,8 @@ function deriveVerdict(tier,tu,bk,fi,ex,dl){
     if(!tu.isClean)conds.push('Minor adverse on TransUnion — escalate to credit committee');
     if(!tu.hasProperty)conds.push(expClean?'No property — mitigated by clean CCF conduct; suretyship recommended':'No property — obtain additional security');
     if(fi.ebitdaCoverage!==null&&fi.ebitdaCoverage<1.0){dec.push('EBITDA coverage insufficient at '+fi.ebitdaCoverage+'x');return{verdict:'declined',declineReasons:dec,conditions:conds,confidence:'HIGH'};}
+    if(fi.isRevenueDecline)conds.push('Revenue declined '+fi.revenueDeclinePct+'% YoY — credit committee to assess trading trajectory before approval');
+    if(fi.isNegativeLiquidity)conds.push('Negative quick ratio ('+fi.quickRatio+'x) — critical liquidity risk, obtain cash flow forecast');
     if(fi.isMarginal)conds.push('EBITDA coverage marginal at '+fi.ebitdaCoverage+'x — obtain quarterly management accounts');
     if(!fi.eqMeets&&fi.dealPct!==null)conds.push('Deal '+fi.dealPct+'% of equity exceeds ≤'+fi.eqThreshold+'% guideline — credit committee sign-off');
     if(fi.assurance==='Unaudited'||fi.assurance==='Compiled')conds.push('Financials unaudited — obtain audited statements');
@@ -781,7 +796,9 @@ function renderMonday(){
 // ── PROMPTS ────────────────────────────────────────────────────
 var P_TU='You are a senior credit analyst. Extract data from this TransUnion CV4B report. Return ONLY valid JSON.\n\n{"entity":"string","reg_no":"string","c1_age":number,"c2_commercial":number,"c3_judgments":"0|1|2","c3_defaults":"0|1|2","c4_judgments":"0|1|2","c4_defaults":"0|1","c4_dir_property":"none|one|all","c5_props":number,"c6_adverse":"0|1|2","ko_dir_age":number_or_null,"ko_dir_tenure":number_or_null,"ko_dir_count":number}\n\nCRITICAL: ko_dir_age must come ONLY from a field explicitly labelled Date of Birth, DOB or Age in the Principal/Director section. Must be 18–100. Registration numbers are NOT ages. If uncertain return null.';
 
-var P_FIN='You are a senior credit analyst. Extract financial data. Return ONLY valid JSON.\n\n{"entity":"string","period_current":"string","period_prior":"string or null","assurance_level":"Audited|Reviewed|Compiled|Unaudited|Unknown","auditor_name":"string or null","current":{"revenue":null,"gross_profit":null,"gp_margin":null,"ebitda":null,"npbt":null,"npat":null,"total_equity":null,"total_assets":null,"total_liabilities":null,"current_assets":null,"current_liabilities":null,"total_debt":null,"cash":null},"prior":{"revenue":null,"gross_profit":null,"gp_margin":null,"ebitda":null,"npbt":null,"npat":null,"total_equity":null,"total_assets":null,"total_liabilities":null,"current_assets":null,"current_liabilities":null,"total_debt":null,"cash":null},"accounting_errors":[],"integrity_warnings":[],"flags":[]}\n\nEBITDA = NPBT + interest + depreciation + amortisation.';
+var P_FIN='You are a senior credit analyst. Extract financial data. Return ONLY valid JSON.\n\n{"entity":"string","period_current":"string","period_prior":"string or null","assurance_level":"Audited|Reviewed|Compiled|Unaudited|Unknown","auditor_name":"string or null","current":{"revenue":null,"gross_profit":null,"gp_margin":null,"ebitda":null,"npbt":null,"npat":null,"total_equity":null,"total_assets":null,"total_liabilities":null,"current_assets":null,"current_liabilities":null,"inventory":null,"total_debt":null,"cash":null,"revaluation_reserve":null,"tangible_net_equity":null,"quick_ratio":null},"prior":{"revenue":null,"gross_profit":null,"gp_margin":null,"ebitda":null,"npbt":null,"npat":null,"total_equity":null,"total_assets":null,"total_liabilities":null,"current_assets":null,"current_liabilities":null,"inventory":null,"total_debt":null,"cash":null,"revaluation_reserve":null},"accounting_errors":[],"integrity_warnings":[],"integrity_checks":[{"check":"string","result":"PASS|FAIL|WARNING|UNABLE TO VERIFY","detail":"string"}],"flags":[]}\n\nEBITDA = NPBT + interest + depreciation + amortisation. revaluation_reserve = any property/asset revaluation reserve within equity (null if none) — CCF discounts this from equity for deal-sizing purposes. tangible_net_equity = total_equity minus revaluation_reserve (equal to total_equity if no revaluation reserve exists); populate this explicitly rather than leaving it for the caller to compute. quick_ratio = (current_assets − inventory) ÷ current_liabilities, to 2 decimal places (null if current_liabilities is 0 or unavailable). integrity_checks should include at minimum: balance sheet balances (assets = liabilities + equity), NPAT reconciles to retained earnings movement (if determinable), EBITDA build-up is consistent with disclosed NPBT/interest/D&A, and any other standard checks you can verify — each with a PASS/FAIL/WARNING/UNABLE TO VERIFY result and a one-sentence detail.';
+
+var P_MANACCS='You are a senior credit analyst. Extract financial data from these management accounts (interim/unaudited supplementary financials). Return ONLY valid JSON.\n\n{"entity":"string","period_current":"string","assurance_level":"Compiled|Unaudited|Unknown","current":{"revenue":null,"gross_profit":null,"gp_margin":null,"ebitda":null,"npbt":null,"npat":null,"total_equity":null,"total_assets":null,"total_liabilities":null,"current_assets":null,"current_liabilities":null,"total_debt":null,"cash":null}}\n\nEBITDA = NPBT + interest + depreciation + amortisation. This is a supplementary interim view alongside audited/reviewed annual financial statements — extract only what is present in these specific documents, do not infer prior-year figures.';
 
 var P_BANK_CORE='You are a senior credit analyst. Analyse these bank statements. Return ONLY valid JSON.\n\n{"bank_name":"string","account_holder":"string","account_number":"string","period":"string","overall_conduct":"GOOD|SATISFACTORY|CONCERNING|POOR","rd_count":0,"excess_count":0,"avg_monthly_income":0,"avg_monthly_income_excl_transfers":0,"total_credits":0,"income_trend":"GROWING|STABLE|VOLATILE|DECLINING","income_regularity":"REGULAR|IRREGULAR","primary_income_source":"string","avg_monthly_debits":0,"debit_to_credit_ratio":0,"opening_balance":0,"closing_balance":0,"avg_monthly_closing_balance":0,"lowest_balance":0,"lowest_balance_date":null,"overdraft_limit":null,"od_times_breached":0,"total_monthly_debt":0,"debt_to_income_ratio":0,"conduct_notes":"string","returned_debits":[{"date":"","description":"","amount":0}],"excesses":[{"date":"","description":"","amount":0}],"identified_debts":[{"lender":"","description":"","frequency":"","monthly_instalment":0,"missed_payments":0}],"overdraft":{"in_place":false,"limit":null,"monthly_repayment":null,"excess_interest_rate_percent":null,"times_limit_breached":0,"max_breach_amount":null,"breach_dates":[]},"credit_assessment":{"strengths":[],"concerns":[],"recommendation":""}}\n\nCRITICAL: DO NOT classify as RD: ATM declined, POS Unsuccessful, Declined Purch Tran, Card Declined, Fee Declined. These are consumer-initiated declines, NOT returned debit orders.\n\nKeep returned_debits, excesses and identified_debts to the most material items (cap at 20 each) — do not list every minor transaction. Keep all text fields concise.';
 
@@ -815,10 +832,17 @@ async function runAnalysis(){
         var fc=[];
         for(var i=0;i<S.files.finCur.length;i++)fc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.finCur[i])}});
         for(var i=0;i<S.files.finPri.length;i++)fc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.finPri[i])}});
-        for(var i=0;i<S.files.manAccs.length;i++)fc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.manAccs[i])}});
-        fc.push({type:'text',text:'Extract financial data. Current year files: '+S.files.finCur.length+'. Prior year: '+S.files.finPri.length+'. Management accounts: '+S.files.manAccs.length+'.'});
+        fc.push({type:'text',text:'Extract financial data. Current year files: '+S.files.finCur.length+'. Prior year: '+S.files.finPri.length+'.'});
         var finRaw=await claude(P_FIN,fc,8000);
         S.finResult=await parseJson(finRaw);
+        if(S.files.manAccs.length>0){
+          S.progress='Analysing management accounts...';render();
+          var mac=[];
+          for(var i=0;i<S.files.manAccs.length;i++)mac.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.manAccs[i])}});
+          mac.push({type:'text',text:'Extract financial data from these '+S.files.manAccs.length+' management accounts document(s).'});
+          var maRaw=await claude(P_MANACCS,mac,4000);
+          S.finResult.manAccs=await parseJson(maRaw);
+        }
       }catch(stageErr){throw new Error('[Financial statements extraction] '+stageErr.message);}
     }
 
@@ -858,7 +882,7 @@ function buildSynCtx(tu,bk,fi,verdict,payout,rental,tier){
     '\nTrading age: '+(S.tuResult&&S.tuResult.c1_age||'—')+' years | TU Score: '+(S.tuResult&&S.tuResult.c2_commercial||'—')+
     '\nDeal: Tier '+tier+' | Payout R'+fmt(payout)+' | Rental R'+fmt(rental)+'/month | Asset: '+(S.assetType==='income'?'Income-Generating':'Non-Income-Generating')+
     '\nTransUnion: Property '+(tu.hasProperty?'Yes':'No')+' | Status: '+(tu.isClean?'Clean':'Adverse noted')+
-    '\n'+(fi.available?'Financials ('+fin.assurance_level+'): Revenue '+fmtR(fin.current&&fin.current.revenue)+' | EBITDA '+fmtR(fin.current&&fin.current.ebitda)+' | Coverage '+(fi.ebitdaCoverage||'N/A')+'x | Equity '+fmtR(fi.equity):'Financials: Not provided')+
+    '\n'+(fi.available?'Financials ('+fin.assurance_level+'): Revenue '+fmtR(fin.current&&fin.current.revenue)+' | EBITDA '+fmtR(fin.current&&fin.current.ebitda)+' | Coverage '+(fi.ebitdaCoverage||'N/A')+'x | Tangible Equity '+fmtR(fi.equity)+(fi.revenueGrowth!=null?' | Revenue growth '+fi.revenueGrowth+'% YoY':'')+(fi.quickRatio!=null?' | Quick ratio '+fi.quickRatio+'x':'')+(fin.manAccs&&(fin.manAccs.current||fin.manAccs)?' | Management Accs EBITDA '+fmtR((fin.manAccs.current||fin.manAccs).ebitda):''):'Financials: Not provided')+
     '\n'+(bk.available?'Bank: Conduct '+bk.conduct+' | RDs '+bk.rdCount+' | Excesses '+(bk.excessCount||0)+' | Avg income '+fmtR(bk.avgMonthly)+'/mo | Coverage '+(bk.coverage||'N/A')+'x | DTI '+(bk.dti!=null?(bk.dti*100).toFixed(1)+'%':'N/A')+(bk.aml?' | AML/FICA: '+bk.aml.overall_rating+(bk.aml.fica_recommendation?' — '+bk.aml.fica_recommendation:''):''):'Bank: Not provided')+
     '\n'+(S.bounceSelected&&S.exposure.npv>0?'CCF existing: '+fmtR(S.exposure.npv)+' | Bounces: '+S.bounceCount:'CCF: New client')+
     '\n'+(S.dealCtx&&S.dealCtx.id&&S.dealCtx.id!=='skipped'?'Deal: Grade '+S.dealCtx.riskGrade+' | Period '+S.dealCtx.period+' | Recourse: '+(/recourse/i.test(S.dealCtx.approvalTerms||'')?'Yes':'No')+' | Equipment: '+S.dealCtx.equipment:'')+
@@ -892,6 +916,8 @@ function saveDealToRepo(tier,payout,rental,tu,fi,bk,ex,dl,vr){
     finEbitdaCoverage:fi.available?fi.ebitdaCoverage:null,
     finEquity:fi.available?fi.equity:null,
     finDealPct:fi.available?fi.dealPct:null,
+    finQuickRatio:fi.available?fi.quickRatio:null,
+    finRevenueDeclinePct:fi.available&&fi.isRevenueDecline?fi.revenueDeclinePct:null,
     bankAvailable:!!bk.available,
     bankConduct:bk.available?bk.conduct:null,
     bankRDCount:bk.available?bk.rdCount:null,
@@ -997,6 +1023,40 @@ function renderRepo(){
 }
 
 // ── RENDER ─────────────────────────────────────────────────────
+function renderManAccsPanel(fin){
+  var ma=fin&&fin.manAccs;
+  var mc=ma&&(ma.current||(ma.revenue!=null?ma:null));
+  if(!mc)return'';
+  var afs=fin.current||{};
+  var rows=[
+    ['Revenue',mc.revenue,afs.revenue],
+    ['Gross Profit',mc.gross_profit,afs.gross_profit],
+    ['EBITDA',mc.ebitda,afs.ebitda],
+    ['NPBT',mc.npbt,afs.npbt],
+    ['NPAT',mc.npat,afs.npat],
+    ['Total Equity',mc.total_equity,afs.total_equity],
+    ['Total Assets',mc.total_assets,afs.total_assets],
+    ['Total Liabilities',mc.total_liabilities,afs.total_liabilities],
+  ];
+  return '<div class="card" style="border:2px solid #bae6fd"><div class="ch" style="background:#0369a1"><h2 style="color:white">📊 Management Accounts</h2><span style="font-size:11px;color:#bae6fd">'+(ma.period_current?esc(ma.period_current)+' · ':'')+'Supplementary — interim/unaudited</span></div><div class="cb" style="background:#f0f9ff">'+
+    '<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#0369a1"><th style="padding:6px 10px;color:white;text-align:left">Metric</th><th style="padding:6px 10px;color:white;text-align:right">Management Accs</th><th style="padding:6px 10px;color:white;text-align:right">AFS Current</th></tr></thead><tbody>'+
+    rows.map(function(r,i){return '<tr style="background:'+(i%2===0?'#dbeafe':'white')+'"><td style="padding:5px 10px;font-weight:600;color:#1e3a5f">'+r[0]+'</td><td style="padding:5px 10px;text-align:right;font-weight:700;color:#0369a1">'+(r[1]!=null?fmtR(r[1]):'N/A')+'</td><td style="padding:5px 10px;text-align:right;color:#374151">'+(r[2]!=null?fmtR(r[2]):'—')+'</td></tr>';}).join('')+
+    '</tbody></table></div></div>';
+}
+
+function renderIntegrityChecksCard(fin){
+  var checks=fin&&fin.integrity_checks;
+  if(!checks||checks.length===0)return'';
+  var passes=checks.filter(function(c){return c.result==='PASS';}).length;
+  var fails=checks.filter(function(c){return c.result==='FAIL';}).length;
+  var warns=checks.filter(function(c){return c.result==='WARNING';}).length;
+  var badgeC=function(r){var m={PASS:['#d1fae5','#065f46'],FAIL:['#fee2e2','#991b1b'],WARNING:['#fef3c7','#92400e']}[r]||['#f3f4f6','#374151'];return '<span class="bdg" style="background:'+m[0]+';color:'+m[1]+';border-color:'+m[1]+'55">'+r+'</span>';};
+  return '<div class="card"><div class="ch"><h2>Accounting Integrity Checks</h2><span style="font-size:11px;color:#6b7280">✓ '+passes+' passed'+(fails>0?' · ✕ '+fails+' failed':'')+(warns>0?' · ⚠ '+warns+' warnings':'')+'</span></div><div class="cb" style="padding:0">'+
+    '<table class="tlt"><thead><tr><th>Check</th><th style="width:110px">Result</th><th>Detail</th></tr></thead><tbody>'+
+    checks.map(function(c){var bg=c.result==='PASS'?'#f0fdf4':c.result==='FAIL'?'#fef2f2':c.result==='WARNING'?'#fffbeb':'white';return '<tr style="background:'+bg+'"><td>'+esc(c.check)+'</td><td>'+badgeC(c.result)+'</td><td style="font-size:12px">'+esc(c.detail||'')+'</td></tr>';}).join('')+
+    '</tbody></table></div></div>';
+}
+
 function renderAmlPanel(bk){
   var aml=bk&&bk.available?bk.aml:null;
   if(!aml)return'';
@@ -1225,7 +1285,7 @@ function renderReview(){
     '<table class="tlt"><thead><tr><th>Module</th><th>Status</th><th>Key Finding</th><th>Rating</th></tr></thead><tbody>'+
     '<tr><td style="font-weight:600">TransUnion CV4B</td><td>✓ Analysed</td><td style="font-size:12px">Score '+(S.tuResult&&S.tuResult.c2_commercial||'—')+' · Age '+(S.tuResult&&S.tuResult.c1_age||'—')+'yr · Property: '+(tu.hasProperty?'Yes':'No')+' · '+(tu.isClean?'Clean':'Adverse noted')+'</td><td>'+badge(tuS)+'</td></tr>'+
     '<tr><td style="font-weight:600">CCF Existing Exposure</td><td>'+(ex.available?'✓ Checked':'— Not checked')+'</td><td style="font-size:12px">'+(ex.available?(ex.isExisting?fmtR(ex.npv)+' · Bounces: '+ex.bounceCount:'New client'):'Not completed')+'</td><td>'+badge(exS)+'</td></tr>'+
-    '<tr><td style="font-weight:600">Financial Statements</td><td>'+(fi.available?'✓ Analysed':'— Not provided')+'</td><td style="font-size:12px">'+(fi.available?'EBITDA cov: '+(fi.ebitdaCoverage||'N/A')+'x · Equity: '+fmtR(fi.equity)+' · Deal: '+(fi.dealPct||'N/A')+'% of equity':'Not provided')+'</td><td>'+badge(fiS)+'</td></tr>'+
+    '<tr><td style="font-weight:600">Financial Statements</td><td>'+(fi.available?'✓ Analysed':'— Not provided')+'</td><td style="font-size:12px">'+(fi.available?'EBITDA cov: '+(fi.ebitdaCoverage||'N/A')+'x · Tangible Equity: '+fmtR(fi.equity)+' · Deal: '+(fi.dealPct||'N/A')+'% · Quick ratio: '+(fi.quickRatio!=null?fi.quickRatio+'x':'N/A'):'Not provided')+'</td><td>'+badge(fiS)+'</td></tr>'+
     '<tr><td style="font-weight:600">Bank Statements</td><td>'+(bk.available?'✓ Analysed':'— Not provided')+'</td><td style="font-size:12px">'+(bk.available?'Conduct: '+bk.conduct+' · RDs: '+bk.rdCount+' · Excesses: '+(bk.excessCount||0)+' · Coverage: '+(bk.coverage||'N/A')+'x'+(bk.aml?' · AML: '+bk.aml.overall_rating:''):'Not provided')+'</td><td>'+badge(bkS)+'</td></tr>'+
     '<tr><td style="font-weight:600">Monday Deal Context</td><td>'+(dl.available?'✓ Linked':'— Not linked')+'</td><td style="font-size:12px">'+(dl.available&&dl.summary.length>0?esc(dl.summary.join(' · ')):'Not linked')+'</td><td>'+badge(dlS)+'</td></tr>'+
     '</tbody></table></div></div>'+
@@ -1238,6 +1298,8 @@ function renderReview(){
     '</div>'+
 
     renderAmlPanel(bk)+
+    renderManAccsPanel(S.finResult)+
+    renderIntegrityChecksCard(S.finResult)+
     renderBankDetailCard(bk,S.bankResult)+
 
     (allF.length>0?'<div class="card"><div class="ch"><h2>All Risk Flags</h2></div><div class="cb">'+allF.map(function(f){return '<div class="fl f'+(f.level==='green'?'g2':f.level==='red'?'r':'a')+'"><span class="fsrc src-'+f.src.toLowerCase()+'">'+f.src+'</span><span class="ftx">'+esc(f.text)+'</span></div>';}).join('')+'</div></div>':'')+
@@ -1293,7 +1355,7 @@ function dlWord(){
     (S.synopsis?h2('3. Analyst Recommendation')+'<p style="font-size:13px;line-height:1.7;padding-left:12px;border-left:3px solid #987F40">'+esc(S.synopsis)+'</p>':'')+
     h2('4. TransUnion')+tbl(row('Commercial Score',S.tuResult&&S.tuResult.c2_commercial)+row('Trading Age',(S.tuResult&&S.tuResult.c1_age||'—')+' years',true)+row('Property',tu.hasProperty?'✓ Confirmed':'Not detected')+row('Overall Status',tu.hardDecline?'✕ HARD DECLINE':tu.isClean?'✓ CLEAN':'⚠ ADVERSE NOTED',true))+
     (allF.length>0?h2('5. All Risk Flags')+'<ul>'+allF.map(function(f){return '<li style="font-size:12px;color:'+(f.level==='red'?'#991b1b':f.level==='green'?'#065f46':'#92400e')+'">['+f.src+'] '+esc(f.text)+'</li>';}).join('')+'</ul>':'')+
-    (fi.available?h2('6. Financial Statements')+tbl(row('Revenue',fmtR(fin&&fin.current&&fin.current.revenue))+row('EBITDA',fmtR(fin&&fin.current&&fin.current.ebitda),true)+row('EBITDA Coverage',(fi.ebitdaCoverage||'N/A')+'x')+row('Total Equity',fmtR(fi.equity),true)+row('Deal % of Equity',(fi.dealPct||'N/A')+'% (guideline ≤'+fi.eqThreshold+'%)')+row('Assurance',fin&&fin.assurance_level||'Unknown',true)):'')+
+    (fi.available?h2('6. Financial Statements')+tbl(row('Revenue',fmtR(fin&&fin.current&&fin.current.revenue))+row('EBITDA',fmtR(fin&&fin.current&&fin.current.ebitda),true)+row('EBITDA Coverage',(fi.ebitdaCoverage||'N/A')+'x')+row('Tangible Net Equity',fmtR(fi.equity),true)+row('Deal % of Tangible Equity',(fi.dealPct||'N/A')+'% (guideline ≤'+fi.eqThreshold+'%)')+row('Quick Ratio',fi.quickRatio!=null?fi.quickRatio+'x':'N/A',true)+row('Revenue Growth (YoY)',fi.revenueGrowth!=null?fi.revenueGrowth+'%':'N/A')+row('Assurance',fin&&fin.assurance_level||'Unknown',true)+(fin&&fin.manAccs&&(fin.manAccs.current||fin.manAccs)?row('Management Accounts EBITDA',fmtR((fin.manAccs.current||fin.manAccs).ebitda)):'')):'')+
     (bk.available?h2('7. Bank Statements')+tbl(row('Conduct',bk.conduct)+row('Returned Debits',String(bk.rdCount),true)+row('Excesses',String(bk.excessCount||0))+row('Avg Monthly Income',fmtR(bk.avgMonthly),true)+row('Income Coverage',(bk.coverage||'N/A')+'x')+row('Debt-to-Income',bk.dti!=null?(bk.dti*100).toFixed(1)+'%':'N/A',true)+(bk.overdraft&&bk.overdraft.in_place?row('Overdraft Facility',fmtR(bk.overdraft.limit)+' — breached '+(bk.overdraft.times_limit_breached||0)+'x'):'')):'')+
     (bk.available&&bk.aml?h2('7b. AML / FICA Risk Assessment')+'<p style="font-size:13px"><strong>Overall Rating: '+esc(bk.aml.overall_rating||'—')+'</strong></p>'+(bk.aml.fica_recommendation?'<p style="font-size:12px">'+esc(bk.aml.fica_recommendation)+'</p>':'')+'<ul>'+[['Pass-Through / Conduit Account',bk.aml.pass_through_flag],['Structuring',bk.aml.structuring_flag],['Sanitised / Opaque References',bk.aml.sanitised_references_flag],['Counterparty Concentration',bk.aml.counterparty_concentration_flag],['Split Round-Number Transactions',bk.aml.split_round_number_flag],['Commodity Cover Without Substance',bk.aml.commodity_cover_flag],['Daily Drain Pattern',bk.aml.daily_drain_flag]].filter(function(x){return x[1];}).map(function(x){return '<li style="font-size:12px;color:#991b1b">'+x[0]+'</li>';}).join('')+'</ul>':'')+
     '</body></html>';
