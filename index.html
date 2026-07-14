@@ -249,7 +249,7 @@ async function parseJson(raw){
   var clean=raw.replace(/```json|```/g,'').trim();
   if(!clean){throw new Error('Model returned an empty response — the document may be blank, corrupted, or unreadable. Try re-uploading it.');}
   try{return JSON.parse(clean);}catch(e){
-    var rep=await claude('Fix this JSON. Output ONLY valid JSON.',clean);
+    var rep=await claude('Fix this JSON. Output ONLY valid JSON.',clean,8000);
     var repClean=rep.replace(/```json|```/g,'').trim();
     if(!repClean){throw new Error('Model returned malformed JSON and the repair attempt also came back empty. Try running the analysis again.');}
     return JSON.parse(repClean);
@@ -814,7 +814,7 @@ async function runAnalysis(){
         for(var i=0;i<S.files.finPri.length;i++)fc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.finPri[i])}});
         for(var i=0;i<S.files.manAccs.length;i++)fc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.manAccs[i])}});
         fc.push({type:'text',text:'Extract financial data. Current year files: '+S.files.finCur.length+'. Prior year: '+S.files.finPri.length+'. Management accounts: '+S.files.manAccs.length+'.'});
-        var finRaw=await claude(P_FIN,fc,5000);
+        var finRaw=await claude(P_FIN,fc,8000);
         S.finResult=await parseJson(finRaw);
       }catch(stageErr){throw new Error('[Financial statements extraction] '+stageErr.message);}
     }
@@ -825,7 +825,7 @@ async function runAnalysis(){
         var bc=[];
         for(var i=0;i<S.files.bank.length;i++)bc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.bank[i])}});
         bc.push({type:'text',text:'Analyse these '+S.files.bank.length+' bank statement PDF(s). Apply RD classification rules strictly.'});
-        var bkRaw=await claude(P_BANK,bc,5000);
+        var bkRaw=await claude(P_BANK,bc,8000);
         S.bankResult=await parseJson(bkRaw);
       }catch(stageErr){throw new Error('[Bank statement analysis] '+stageErr.message);}
     }
