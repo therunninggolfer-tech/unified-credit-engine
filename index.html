@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -93,19 +94,50 @@
   #syn{width:100%;min-height:80px;padding:9px 11px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;resize:vertical;font-family:inherit;line-height:1.7}
   .cc{font-size:10px;color:#9ca3af;text-align:right;margin-top:3px}
   @media print{.np{display:none!important}body{background:white}}
+  .sec-deal{border-left:5px solid var(--teal)}
+  .sec-deal .ch{background:#f0f7f8}
+  .sec-deal .ch h2{color:var(--teal)}
+  .sec-monday{border-left:5px solid #0369a1}
+  .sec-monday .ch{background:#eff6ff}
+  .sec-monday .ch h2{color:#0369a1}
+  .sec-exposure{border-left:5px solid #7c3aed}
+  .sec-exposure .ch{background:#f5f3ff}
+  .sec-exposure .ch h2{color:#7c3aed}
+  .sec-tu{border-left:5px solid var(--gold)}
+  .sec-tu .ch{background:#fbf7ef}
+  .sec-tu .ch h2{color:var(--gold)}
+  .sec-bank{border-left:5px solid var(--mint)}
+  .sec-bank .ch{background:#effcf8}
+  .sec-bank .ch h2{color:#0d9488}
+  .sec-fin{border-left:5px solid var(--amber)}
+  .sec-fin .ch{background:#fffbeb}
+  .sec-fin .ch h2{color:var(--amber)}
+  .mon-connected-btn{background:var(--teal);color:white;border:1px solid var(--teal);border-radius:6px;padding:7px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+  .mon-connected-btn:hover{background:#2c525e}
 </style>
 </head>
 <body>
 
+<div id="gate-ov" style="position:fixed;inset:0;background:var(--teal);z-index:200;display:flex;align-items:center;justify-content:center;font-family:Calibri,Arial,sans-serif">
+  <div style="background:white;border-radius:12px;padding:32px;width:340px;max-width:90vw;box-shadow:0 10px 40px rgba(0,0,0,0.3)">
+    <h2 style="color:var(--teal);font-size:18px;margin-bottom:4px">CCF Unified Credit Engine</h2>
+    <p style="font-size:12px;color:#6b7280;margin-bottom:16px">Internal tool — enter password to continue.</p>
+    <input type="password" id="gate-pw" placeholder="Password" style="width:100%;padding:9px 11px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;margin-bottom:10px">
+    <div id="gate-err" style="display:none;color:#dc2626;font-size:12px;margin-bottom:10px">Incorrect password.</div>
+    <button onclick="checkGate()" style="width:100%;padding:10px;background:var(--teal);color:white;border:none;border-radius:6px;font-weight:700;font-size:14px;cursor:pointer">Enter</button>
+  </div>
+</div>
+
 <div id="api-modal" class="modal-ov" style="display:none">
   <div class="modal">
     <h2>Anthropic API Key</h2>
-    <p>Stored in sessionStorage only — sent directly to Anthropic's API.</p>
+    <p>Saved on this device (localStorage) — will stay connected on future visits. Sent directly to Anthropic's API.</p>
     <div class="fg"><label>API Key</label><input type="password" id="api-key-input" placeholder="sk-ant-..."></div>
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn btn-p" onclick="saveKey()">Save</button>
       <button class="btn btn-o" onclick="closeModal()">Cancel</button>
     </div>
+    <div style="margin-top:10px;text-align:right"><a href="#" onclick="clearApiKey();return false" style="font-size:11px;color:#9ca3af;text-decoration:underline">Disconnect / remove saved key</a></div>
   </div>
 </div>
 
@@ -113,7 +145,7 @@
   <div><h1>CCF Unified Credit Engine</h1><p>TransUnion · Financials · Bank Statements · Deal Context</p></div>
   <div style="display:flex;gap:8px">
     <button class="api-btn" onclick="viewRepo()">📁 Repository</button>
-    <button class="api-btn" onclick="showModal()">⚙ API Key</button>
+    <button class="api-btn" id="api-key-btn" onclick="showModal()">⚙ API Key</button>
   </div>
 </div>
 
@@ -123,11 +155,41 @@
 <script>
 'use strict';
 
+// ── ACCESS GATE ────────────────────────────────────────────────
+// Note: this is a deterrent, not real security — it's a client-side check,
+// and the page/logic is still fully visible to anyone via view-source.
+var GATE_HASH='dea9cc4d6023398b8701cdaaf8910778f67e16713cd17dcee20001f9955bcb24';
+async function sha256(str){
+  var buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0');}).join('');
+}
+async function checkGate(){
+  var val=document.getElementById('gate-pw').value;
+  var h=await sha256(val);
+  if(h===GATE_HASH){
+    try{sessionStorage.setItem('ccf_gate_ok','1');}catch(e){}
+    document.getElementById('gate-ov').style.display='none';
+  }else{
+    document.getElementById('gate-err').style.display='block';
+  }
+}
+document.addEventListener('DOMContentLoaded',function(){
+  var pwEl=document.getElementById('gate-pw');
+  if(pwEl)pwEl.addEventListener('keydown',function(e){if(e.key==='Enter')checkGate();});
+  try{
+    if(sessionStorage.getItem('ccf_gate_ok')==='1'){
+      var ov=document.getElementById('gate-ov');
+      if(ov)ov.style.display='none';
+    }
+  }catch(e){}
+});
+
 // ── STATE ──────────────────────────────────────────────────────
 var S = {
-  step:'upload', apiKey:sessionStorage.getItem('ccf_api')||'',
+  step:'upload', apiKey:localStorage.getItem('ccf_api')||'',
   mondayToken:localStorage.getItem('ccf_mon')||'',
   monTokSaved: !!(localStorage.getItem('ccf_mon')||''),
+  monTokExpanded:false,
   files:{tu:[],finCur:[],finPri:[],manAccs:[],bank:[]},
   payout:'',rental:'',assetType:'non-income',entity:'',
   bounceCount:0,bounceSelected:false,
@@ -146,7 +208,13 @@ var S = {
 // ── MODAL ──────────────────────────────────────────────────────
 function showModal(){document.getElementById('api-modal').style.display='flex';document.getElementById('api-key-input').value=S.apiKey;}
 function closeModal(){document.getElementById('api-modal').style.display='none';}
-function saveKey(){S.apiKey=document.getElementById('api-key-input').value.trim();sessionStorage.setItem('ccf_api',S.apiKey);closeModal();render();}
+function saveKey(){S.apiKey=document.getElementById('api-key-input').value.trim();localStorage.setItem('ccf_api',S.apiKey);closeModal();updateApiKeyBtn();render();}
+function clearApiKey(){S.apiKey='';try{localStorage.removeItem('ccf_api');}catch(e){}closeModal();updateApiKeyBtn();render();}
+function updateApiKeyBtn(){
+  var btn=document.getElementById('api-key-btn');
+  if(!btn)return;
+  btn.textContent=S.apiKey?'✓ API Key Connected':'⚙ API Key';
+}
 
 // ── UTILS ──────────────────────────────────────────────────────
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -163,15 +231,29 @@ async function claude(sys,content,max){
     body:JSON.stringify({model:'claude-sonnet-5',max_tokens:max,system:sys,messages:[{role:'user',content:content}]})
   });
   var d=await res.json();
-  if(d.error)throw new Error(d.error.message);
-  return d.content&&d.content.find(function(b){return b.type==='text';})&&d.content.find(function(b){return b.type==='text';}).text||'';
+  if(d.error){console.error('Claude API error:',d.error);throw new Error(d.error.message);}
+  var textBlock=d.content&&d.content.find(function(b){return b.type==='text';});
+  var text=textBlock&&textBlock.text||'';
+  if(!text){
+    console.error('Claude API returned no usable text. Full response:',d);
+    console.error('HTTP status:',res.status,'stop_reason:',d.stop_reason,'content blocks:',d.content);
+    var diag='';
+    if(d.stop_reason==='max_tokens')diag=' (stop_reason: max_tokens — the request likely exceeded the token budget, e.g. too many/too large bank statement pages)';
+    else if(d.stop_reason)diag=' (stop_reason: '+d.stop_reason+')';
+    else if(!res.ok)diag=' (HTTP '+res.status+')';
+    if(diag)console.warn('Likely cause:'+diag);
+  }
+  return text;
 }
 
 async function parseJson(raw){
   var clean=raw.replace(/```json|```/g,'').trim();
+  if(!clean){throw new Error('Model returned an empty response — the document may be blank, corrupted, or unreadable. Try re-uploading it.');}
   try{return JSON.parse(clean);}catch(e){
     var rep=await claude('Fix this JSON. Output ONLY valid JSON.',clean);
-    return JSON.parse(rep.replace(/```json|```/g,'').trim());
+    var repClean=rep.replace(/```json|```/g,'').trim();
+    if(!repClean){throw new Error('Model returned malformed JSON and the repair attempt also came back empty. Try running the analysis again.');}
+    return JSON.parse(repClean);
   }
 }
 
@@ -208,20 +290,37 @@ function evalTU(tu){
 }
 
 function evalBank(bank,rental){
-  if(!bank)return{available:false,flags:[],isStrong:false,isMarginal:false,hardDecline:false,rdCount:0,coverage:null,conduct:null,avgMonthly:0,dti:null};
+  if(!bank)return{available:false,flags:[],isStrong:false,isMarginal:false,hardDecline:false,rdCount:0,coverage:null,conduct:null,avgMonthly:0,dti:null,aml:null,overdraft:null};
   var rd=bank.rd_count||0,con=bank.overall_conduct||bank.conduct_rating;
+  var exCount=bank.excess_count||0;
   var avg=bank.avg_monthly_income_excl_transfers||bank.avg_monthly_income||0;
   var cov=rental&&avg>0?parseFloat((avg/rental).toFixed(2)):null;
   var dti=bank.debt_to_income_ratio;
+  var od=bank.overdraft||{};
+  var aml=bank.aml_risk||null;
   var hasRD=rd>0,flags=[];
   if(hasRD)flags.push({level:'red',text:rd+' returned debit(s) — hard decline flag'});
   if(con==='POOR')flags.push({level:'red',text:'Bank account conduct rated POOR'});
   if(con==='CONCERNING')flags.push({level:'amber',text:'Bank account conduct rated CONCERNING'});
   if(cov!==null&&cov<1.5)flags.push({level:cov<1.0?'red':'amber',text:'Bank income coverage '+cov+'x — below '+(cov<1.0?'minimum':'guideline')+' 1.5x'});
   if(dti!==null&&dti>0.6)flags.push({level:'red',text:'Debt-to-income ratio '+(dti*100).toFixed(1)+'% — high debt burden'});
-  var strong=!hasRD&&(con==='GOOD'||con==='SATISFACTORY')&&(cov===null||cov>=1.5);
-  var marg=!hasRD&&con==='CONCERNING';
-  return{available:true,hasRDs:hasRD,rdCount:rd,conduct:con,coverage:cov,avgMonthly:avg,dti:dti,isStrong:strong,isMarginal:marg,hardDecline:hasRD||con==='POOR',flags:flags};
+  if(exCount>2)flags.push({level:'amber',text:exCount+' excess/over-limit instances — overdraft reliance'});
+  if(od.times_limit_breached>0)flags.push({level:od.times_limit_breached>3?'red':'amber',text:'Overdraft limit breached '+od.times_limit_breached+' time(s)'+(od.max_breach_amount?' — max breach '+fmtR(od.max_breach_amount):'')});
+  var amlHard=false;
+  if(aml){
+    if(aml.overall_rating==='CRITICAL'){flags.push({level:'red',text:'AML/FICA risk rated CRITICAL — '+(aml.fica_recommendation||'immediate escalation required')});amlHard=true;}
+    else if(aml.overall_rating==='HIGH')flags.push({level:'red',text:'AML/FICA risk rated HIGH — '+(aml.fica_recommendation||'enhanced due diligence required')});
+    else if(aml.overall_rating==='MEDIUM')flags.push({level:'amber',text:'AML/FICA risk rated MEDIUM — review conduct'});
+    if(aml.structuring_flag)flags.push({level:'red',text:'Structuring pattern detected'+(aml.structuring_notes?': '+aml.structuring_notes:'')});
+    if(aml.pass_through_flag)flags.push({level:'amber',text:'Pass-through / conduit account pattern detected'});
+    if(aml.daily_drain_flag)flags.push({level:'amber',text:'Daily cash-out drain pattern detected ('+(aml.daily_drain_days_count||0)+' day(s))'});
+    if(aml.counterparty_concentration_flag)flags.push({level:'amber',text:'Outflow concentration to unnamed individual counterparty'});
+    if(aml.split_round_number_flag)flags.push({level:'amber',text:'Split round-number transaction pattern detected'});
+    if(aml.commodity_cover_flag)flags.push({level:'amber',text:'Commodity/trading narrative lacks supporting transaction substance'});
+  }
+  var strong=!hasRD&&(con==='GOOD'||con==='SATISFACTORY')&&(cov===null||cov>=1.5)&&(!aml||aml.overall_rating==='LOW');
+  var marg=!hasRD&&(con==='CONCERNING'||(aml&&aml.overall_rating==='MEDIUM'));
+  return{available:true,hasRDs:hasRD,rdCount:rd,excessCount:exCount,conduct:con,coverage:cov,avgMonthly:avg,dti:dti,overdraft:od,aml:aml,isStrong:strong,isMarginal:marg,hardDecline:hasRD||con==='POOR'||amlHard,flags:flags};
 }
 
 function evalFin(fin,rental,payout,at){
@@ -443,7 +542,7 @@ async function listMonColumns(){
     S.monColBoardName=board&&board.name||'';
     S.monColData=cols;
     S.monColError=cols.length===0?'No columns returned — check the token has access to this board.':'';
-    if(cols.length>0){S.mondayToken=tok;try{localStorage.setItem('ccf_mon',tok);}catch(e){}S.monTokSaved=true;}
+    if(cols.length>0){S.mondayToken=tok;try{localStorage.setItem('ccf_mon',tok);}catch(e){}S.monTokSaved=true;S.monTokExpanded=false;}
   }catch(e){S.monColError='Error fetching columns: '+e.message;S.monColData=null;}
   renderMonday();
 }
@@ -531,11 +630,13 @@ function saveMonToken(){
   S.mondayToken=val;
   try{localStorage.setItem('ccf_mon',S.mondayToken);}catch(e){}
   S.monTokSaved=!!val;
+  S.monTokExpanded=false;
   renderMonday();
 }
 function clearMonToken(){
   S.mondayToken='';
   S.monTokSaved=false;
+  S.monTokExpanded=false;
   try{localStorage.removeItem('ccf_mon');}catch(e){}
   renderMonday();
 }
@@ -618,13 +719,18 @@ function renderMonday(){
     resHtml='<div style="font-size:12px;color:#6b7280;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 12px;margin-top:8px">No deals found for "'+esc(S.dealSearch)+'".</div>';
   }
 
-  el.innerHTML='<p style="font-size:12px;color:#6b7280;margin-bottom:12px">Search Applications 2026 board to pull deal risk grade, period, recourse and equipment. Feed directly into the credit decision.</p>'+
-    '<div class="fg"><label>Monday.com API Token</label>'+
+  var tokBlock=(S.monTokSaved&&!S.monTokExpanded)?
+    '<button class="mon-connected-btn" id="mon-tok-expand">✓ Monday Connected</button>'
+    :
     '<div style="display:flex;gap:8px">'+
     '<input type="password" id="mon-tok" placeholder="Monday.com API token" value="'+esc(S.mondayToken||'')+'" style="flex:1">'+
     '<button class="btn btn-p btn-s" id="mon-tok-save">'+(S.monTokSaved?'✓ Saved':'Connect')+'</button>'+
     '</div>'+
-    (S.monTokSaved?'<div style="font-size:11px;color:#059669;margin-top:4px">✓ Token saved on this device — will stay connected on future visits · <a href="#" id="mon-tok-clear" style="color:#9ca3af;text-decoration:underline">Disconnect</a></div>':'<div style="font-size:11px;color:#9ca3af;margin-top:4px">Paste your token, then click Connect to save it permanently on this device.</div>')+
+    (S.monTokSaved?'<div style="font-size:11px;color:#059669;margin-top:4px">✓ Token saved on this device — will stay connected on future visits · <a href="#" id="mon-tok-clear" style="color:#9ca3af;text-decoration:underline">Disconnect</a> · <a href="#" id="mon-tok-collapse" style="color:#9ca3af;text-decoration:underline">Done</a></div>':'<div style="font-size:11px;color:#9ca3af;margin-top:4px">Paste your token, then click Connect to save it permanently on this device.</div>');
+
+  el.innerHTML='<p style="font-size:12px;color:#6b7280;margin-bottom:12px">Search Applications 2026 board to pull deal risk grade, period, recourse and equipment. Feed directly into the credit decision.</p>'+
+    '<div class="fg"><label>Monday.com API Token</label>'+
+    tokBlock+
     '<div style="margin-top:4px"><a href="#" id="mon-list-cols" style="font-size:11px;color:#9ca3af;text-decoration:underline">List all columns on this board (find a column ID)</a></div>'+
     '<div id="mon-col-panel"></div>'+
     '</div>'+
@@ -638,6 +744,10 @@ function renderMonday(){
     '<div style="margin-top:10px;font-size:11px;text-align:right"><a href="#" id="mon-skip" style="color:#9ca3af;text-decoration:underline">Skip — no Monday deal linked</a></div>';
 
   // Wire events
+  var tokExpandEl=document.getElementById('mon-tok-expand');
+  if(tokExpandEl)tokExpandEl.onclick=function(){S.monTokExpanded=true;renderMonday();};
+  var tokCollapseEl=document.getElementById('mon-tok-collapse');
+  if(tokCollapseEl)tokCollapseEl.onclick=function(e){e.preventDefault();S.monTokExpanded=false;renderMonday();};
   var tokEl=document.getElementById('mon-tok');
   if(tokEl)tokEl.oninput=function(){S.monTokSaved=false;var btn=document.getElementById('mon-tok-save');if(btn)btn.textContent='Connect';var note=tokEl.parentElement.nextElementSibling;if(note)note.textContent='Token changed — click Connect to save.';};
   if(tokEl)tokEl.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();saveMonToken();}};
@@ -673,7 +783,7 @@ var P_TU='You are a senior credit analyst. Extract data from this TransUnion CV4
 
 var P_FIN='You are a senior credit analyst. Extract financial data. Return ONLY valid JSON.\n\n{"entity":"string","period_current":"string","period_prior":"string or null","assurance_level":"Audited|Reviewed|Compiled|Unaudited|Unknown","auditor_name":"string or null","current":{"revenue":null,"gross_profit":null,"gp_margin":null,"ebitda":null,"npbt":null,"npat":null,"total_equity":null,"total_assets":null,"total_liabilities":null,"current_assets":null,"current_liabilities":null,"total_debt":null,"cash":null},"prior":{"revenue":null,"gross_profit":null,"gp_margin":null,"ebitda":null,"npbt":null,"npat":null,"total_equity":null,"total_assets":null,"total_liabilities":null,"current_assets":null,"current_liabilities":null,"total_debt":null,"cash":null},"accounting_errors":[],"integrity_warnings":[],"flags":[]}\n\nEBITDA = NPBT + interest + depreciation + amortisation.';
 
-var P_BANK='You are a senior credit analyst. Analyse these bank statements. Return ONLY valid JSON.\n\n{"bank_name":"string","account_holder":"string","account_number":"string","period":"string","overall_conduct":"GOOD|SATISFACTORY|CONCERNING|POOR","rd_count":0,"excess_count":0,"avg_monthly_income":0,"avg_monthly_income_excl_transfers":0,"total_credits":0,"income_trend":"GROWING|STABLE|VOLATILE|DECLINING","income_regularity":"REGULAR|IRREGULAR","primary_income_source":"string","avg_monthly_debits":0,"debit_to_credit_ratio":0,"opening_balance":0,"closing_balance":0,"avg_monthly_closing_balance":0,"lowest_balance":0,"overdraft_limit":null,"od_times_breached":0,"total_monthly_debt":0,"debt_to_income_ratio":0,"conduct_notes":"string","returned_debits":[],"identified_debts":[]}\n\nCRITICAL: DO NOT classify as RD: ATM declined, POS Unsuccessful, Declined Purch Tran, Card Declined, Fee Declined. These are consumer-initiated declines, NOT returned debit orders.';
+var P_BANK='You are a senior credit analyst. Analyse these bank statements. Return ONLY valid JSON.\n\n{"bank_name":"string","account_holder":"string","account_number":"string","period":"string","overall_conduct":"GOOD|SATISFACTORY|CONCERNING|POOR","rd_count":0,"excess_count":0,"avg_monthly_income":0,"avg_monthly_income_excl_transfers":0,"total_credits":0,"income_trend":"GROWING|STABLE|VOLATILE|DECLINING","income_regularity":"REGULAR|IRREGULAR","primary_income_source":"string","avg_monthly_debits":0,"debit_to_credit_ratio":0,"opening_balance":0,"closing_balance":0,"avg_monthly_closing_balance":0,"lowest_balance":0,"lowest_balance_date":null,"overdraft_limit":null,"od_times_breached":0,"total_monthly_debt":0,"debt_to_income_ratio":0,"conduct_notes":"string","returned_debits":[{"date":"","description":"","amount":0}],"excesses":[{"date":"","description":"","amount":0}],"identified_debts":[{"lender":"","description":"","frequency":"","monthly_instalment":0,"missed_payments":0}],"overdraft":{"in_place":false,"limit":null,"monthly_repayment":null,"excess_interest_rate_percent":null,"times_limit_breached":0,"max_breach_amount":null,"breach_dates":[]},"credit_assessment":{"strengths":[],"concerns":[],"recommendation":""},"aml_risk":{"overall_rating":"LOW|MEDIUM|HIGH|CRITICAL","velocity_ratio":null,"daily_drain_days_count":0,"daily_drain_flag":false,"sanitised_references_pct":null,"sanitised_references_flag":false,"pass_through_flag":false,"structuring_flag":false,"structuring_notes":"","counterparty_concentration_flag":false,"split_round_number_flag":false,"split_round_number_examples":[],"commodity_cover_flag":false,"fica_recommendation":"string","top_recipients":[{"name":"","transaction_count":0,"total_paid":0}]}}\n\nCRITICAL: DO NOT classify as RD: ATM declined, POS Unsuccessful, Declined Purch Tran, Card Declined, Fee Declined. These are consumer-initiated declines, NOT returned debit orders.\n\nAML/FICA GUIDANCE: velocity_ratio = total debits ÷ total credits over the period (flag >20x as elevated). daily_drain_flag = true if funds are withdrawn/transferred out the same day they are received, repeatedly (conduit-account pattern) — set daily_drain_days_count to the number of days this occurs. sanitised_references_flag = true if over 70% of transaction references are generic/non-descriptive (e.g. "payment", "transfer", numeric-only) — set sanitised_references_pct accordingly. structuring_flag = true if multiple transactions sit just under a reporting threshold in a way that suggests deliberate fragmentation — describe in structuring_notes. counterparty_concentration_flag = true if a large share of outflows go to one unnamed/individual counterparty. split_round_number_flag = true if round-number transactions appear split into smaller round parts — list examples. commodity_cover_flag = true if narrative claims (e.g. commodity trading, forex) lack supporting transaction substance. Set overall_rating CRITICAL only for clear, multiple, strong indicators; HIGH for one strong or several moderate indicators; MEDIUM for a single moderate indicator; LOW if none apply. Always populate fica_recommendation with a concrete next step.';
 
 var P_SYN='You are a senior CCF credit analyst writing a brief internal synopsis.\nRULES: Match length to data (TU only=2-3 sentences, TU+bank=3-5, TU+fin+bank=6-10). Only mention what was provided. First person, direct voice. Specific numbers. No filler phrases. End with one-line verdict.\nEXAMPLE: "Happy to support. Client in cold storage/food distribution — Spar and Ikhwezi Foods main clients. Revenue ~R200m, profitable, equity ~R8m ex shareholder loans. Bank good — OD R5m, lowest balance R4.1m, regular debtor payments. Good equity asset, 20% deposit added."';
 
@@ -691,27 +801,34 @@ async function runAnalysis(){
   try{
     S.progress='Parsing TransUnion report...';render();
     var tuB64=await toB64(S.files.tu[0]);
-    var tuRaw=await claude(P_TU,[{type:'document',source:{type:'base64',media_type:'application/pdf',data:tuB64}},{type:'text',text:'Extract all fields from this TransUnion CV4B report.'}]);
-    S.tuResult=await parseJson(tuRaw);
+    var tuRaw;
+    try{
+      tuRaw=await claude(P_TU,[{type:'document',source:{type:'base64',media_type:'application/pdf',data:tuB64}},{type:'text',text:'Extract all fields from this TransUnion CV4B report.'}]);
+      S.tuResult=await parseJson(tuRaw);
+    }catch(stageErr){throw new Error('[TransUnion extraction] '+stageErr.message);}
 
     if(S.files.finCur.length>0){
       S.progress='Analysing financials...';render();
-      var fc=[];
-      for(var i=0;i<S.files.finCur.length;i++)fc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.finCur[i])}});
-      for(var i=0;i<S.files.finPri.length;i++)fc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.finPri[i])}});
-      for(var i=0;i<S.files.manAccs.length;i++)fc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.manAccs[i])}});
-      fc.push({type:'text',text:'Extract financial data. Current year files: '+S.files.finCur.length+'. Prior year: '+S.files.finPri.length+'. Management accounts: '+S.files.manAccs.length+'.'});
-      var finRaw=await claude(P_FIN,fc,5000);
-      S.finResult=await parseJson(finRaw);
+      try{
+        var fc=[];
+        for(var i=0;i<S.files.finCur.length;i++)fc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.finCur[i])}});
+        for(var i=0;i<S.files.finPri.length;i++)fc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.finPri[i])}});
+        for(var i=0;i<S.files.manAccs.length;i++)fc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.manAccs[i])}});
+        fc.push({type:'text',text:'Extract financial data. Current year files: '+S.files.finCur.length+'. Prior year: '+S.files.finPri.length+'. Management accounts: '+S.files.manAccs.length+'.'});
+        var finRaw=await claude(P_FIN,fc,5000);
+        S.finResult=await parseJson(finRaw);
+      }catch(stageErr){throw new Error('[Financial statements extraction] '+stageErr.message);}
     }
 
     if(S.files.bank.length>0){
       S.progress='Analysing bank statements...';render();
-      var bc=[];
-      for(var i=0;i<S.files.bank.length;i++)bc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.bank[i])}});
-      bc.push({type:'text',text:'Analyse these '+S.files.bank.length+' bank statement PDF(s). Apply RD classification rules strictly.'});
-      var bkRaw=await claude(P_BANK,bc,5000);
-      S.bankResult=await parseJson(bkRaw);
+      try{
+        var bc=[];
+        for(var i=0;i<S.files.bank.length;i++)bc.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:await toB64(S.files.bank[i])}});
+        bc.push({type:'text',text:'Analyse these '+S.files.bank.length+' bank statement PDF(s). Apply RD classification rules strictly.'});
+        var bkRaw=await claude(P_BANK,bc,5000);
+        S.bankResult=await parseJson(bkRaw);
+      }catch(stageErr){throw new Error('[Bank statement analysis] '+stageErr.message);}
     }
 
     S.progress='Generating synopsis...';render();
@@ -719,7 +836,9 @@ async function runAnalysis(){
     var exEv=evalExp(S.bounceCount,S.bounceSelected,S.exposure),dlEv=evalDeal(S.dealCtx);
     var vr=deriveVerdict(tier,tuEv,bkEv,fiEv,exEv,dlEv);
     var ctx=buildSynCtx(tuEv,bkEv,fiEv,vr.verdict,payout,rental,tier);
-    S.synopsis=await claude(P_SYN,ctx,600);
+    try{
+      S.synopsis=await claude(P_SYN,ctx,600);
+    }catch(stageErr){throw new Error('[Synopsis generation] '+stageErr.message);}
     saveDealToRepo(tier,payout,rental,tuEv,fiEv,bkEv,exEv,dlEv,vr);
     S.step='review';
   }catch(ex){S.error='Analysis failed: '+ex.message;S.step='upload';}
@@ -733,7 +852,7 @@ function buildSynCtx(tu,bk,fi,verdict,payout,rental,tier){
     '\nDeal: Tier '+tier+' | Payout R'+fmt(payout)+' | Rental R'+fmt(rental)+'/month | Asset: '+(S.assetType==='income'?'Income-Generating':'Non-Income-Generating')+
     '\nTransUnion: Property '+(tu.hasProperty?'Yes':'No')+' | Status: '+(tu.isClean?'Clean':'Adverse noted')+
     '\n'+(fi.available?'Financials ('+fin.assurance_level+'): Revenue '+fmtR(fin.current&&fin.current.revenue)+' | EBITDA '+fmtR(fin.current&&fin.current.ebitda)+' | Coverage '+(fi.ebitdaCoverage||'N/A')+'x | Equity '+fmtR(fi.equity):'Financials: Not provided')+
-    '\n'+(bk.available?'Bank: Conduct '+bk.conduct+' | RDs '+bk.rdCount+' | Avg income '+fmtR(bk.avgMonthly)+'/mo | Coverage '+(bk.coverage||'N/A')+'x | DTI '+(bk.dti!=null?(bk.dti*100).toFixed(1)+'%':'N/A'):'Bank: Not provided')+
+    '\n'+(bk.available?'Bank: Conduct '+bk.conduct+' | RDs '+bk.rdCount+' | Excesses '+(bk.excessCount||0)+' | Avg income '+fmtR(bk.avgMonthly)+'/mo | Coverage '+(bk.coverage||'N/A')+'x | DTI '+(bk.dti!=null?(bk.dti*100).toFixed(1)+'%':'N/A')+(bk.aml?' | AML/FICA: '+bk.aml.overall_rating+(bk.aml.fica_recommendation?' — '+bk.aml.fica_recommendation:''):''):'Bank: Not provided')+
     '\n'+(S.bounceSelected&&S.exposure.npv>0?'CCF existing: '+fmtR(S.exposure.npv)+' | Bounces: '+S.bounceCount:'CCF: New client')+
     '\n'+(S.dealCtx&&S.dealCtx.id&&S.dealCtx.id!=='skipped'?'Deal: Grade '+S.dealCtx.riskGrade+' | Period '+S.dealCtx.period+' | Recourse: '+(/recourse/i.test(S.dealCtx.approvalTerms||'')?'Yes':'No')+' | Equipment: '+S.dealCtx.equipment:'')+
     '\nVerdict: '+verdict.toUpperCase();
@@ -769,6 +888,8 @@ function saveDealToRepo(tier,payout,rental,tu,fi,bk,ex,dl,vr){
     bankAvailable:!!bk.available,
     bankConduct:bk.available?bk.conduct:null,
     bankRDCount:bk.available?bk.rdCount:null,
+    bankExcessCount:bk.available?bk.excessCount:null,
+    bankAmlRating:bk.available&&bk.aml?bk.aml.overall_rating:null,
     bankCoverage:bk.available?bk.coverage:null,
     exExisting:!!(ex.available&&ex.isExisting),
     exNpv:ex.available?ex.npv:null,
@@ -797,7 +918,7 @@ function viewRepo(){S.step='repo';render();}
 function exportRepoCsv(){
   var repo=getRepo();
   if(repo.length===0){alert('No saved deals to export.');return;}
-  var cols=['savedAt','entity','tier','payout','rental','assetType','verdict','tuScore','tuAge','tuProperty','tuClean','finEbitdaCoverage','finEquity','finDealPct','bankConduct','bankRDCount','bankCoverage','exExisting','exNpv','exBounces','dealGrade','conditions','declineReasons'];
+  var cols=['savedAt','entity','tier','payout','rental','assetType','verdict','tuScore','tuAge','tuProperty','tuClean','finEbitdaCoverage','finEquity','finDealPct','bankConduct','bankRDCount','bankExcessCount','bankAmlRating','bankCoverage','exExisting','exNpv','exBounces','dealGrade','conditions','declineReasons'];
   var csvEsc=function(v){if(v==null)return'';var s=Array.isArray(v)?v.join(' | '):String(v);return '"'+s.replace(/"/g,'""')+'"';};
   var lines=[cols.join(',')].concat(repo.map(function(r){return cols.map(function(c){return csvEsc(r[c]);}).join(',');}));
   var blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv'});
@@ -844,7 +965,7 @@ function renderRepo(){
       '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">'+
       [['TransUnion',(r.tuScore!=null?'Score '+r.tuScore:'—')+(r.tuAge!=null?' · Age '+r.tuAge+'yr':'')+' · '+(r.tuProperty?'Property Y':'Property N')+' · '+(r.tuClean?'Clean':'Adverse')],
        ['Financials',r.finAvailable?'EBITDA cov '+(r.finEbitdaCoverage||'N/A')+'x · Equity '+fmtR(r.finEquity)+' · '+(r.finDealPct||'N/A')+'% of equity':'Not provided'],
-       ['Bank',r.bankAvailable?'Conduct '+r.bankConduct+' · RDs '+r.bankRDCount+' · Cov '+(r.bankCoverage||'N/A')+'x':'Not provided'],
+       ['Bank',r.bankAvailable?'Conduct '+r.bankConduct+' · RDs '+r.bankRDCount+' · Excesses '+(r.bankExcessCount||0)+' · Cov '+(r.bankCoverage||'N/A')+'x'+(r.bankAmlRating?' · AML '+r.bankAmlRating:''):'Not provided'],
        ['CCF Exposure',r.exExisting?fmtR(r.exNpv)+' · Bounces '+r.exBounces:'New client'],
        ['Deal Context',r.dealLinked?'Grade '+r.dealGrade:'Not linked'],
        ['Asset Type',r.assetType==='income'?'Income-Generating':'Non-Income-Generating']
@@ -869,6 +990,54 @@ function renderRepo(){
 }
 
 // ── RENDER ─────────────────────────────────────────────────────
+function renderAmlPanel(bk){
+  var aml=bk&&bk.available?bk.aml:null;
+  if(!aml)return'';
+  var rc={LOW:{c:'#059669',bg:'#f0fdf4',bord:'#bbf7d0'},MEDIUM:{c:'#d97706',bg:'#fffbeb',bord:'#fde68a'},HIGH:{c:'#ea580c',bg:'#fff7ed',bord:'#fdba74'},CRITICAL:{c:'#dc2626',bg:'#fef2f2',bord:'#fca5a5'}}[aml.overall_rating]||{c:'#6b7280',bg:'#f9fafb',bord:'#e5e7eb'};
+  var indicators=[
+    ['Pass-Through / Conduit Account',aml.pass_through_flag],
+    ['Structuring (Sub-threshold Fragmentation)',aml.structuring_flag],
+    ['Sanitised / Opaque References (>70%)',aml.sanitised_references_flag],
+    ['Counterparty Concentration — Unnamed Individual',aml.counterparty_concentration_flag],
+    ['Split Round-Number Transactions',aml.split_round_number_flag],
+    ['Commodity Cover Narrative Without Substance',aml.commodity_cover_flag],
+    ['Daily Cash-Out Maximisation / Drain Pattern',aml.daily_drain_flag],
+  ];
+  var stats=[
+    ['Velocity Ratio',aml.velocity_ratio!=null?aml.velocity_ratio.toFixed(1)+'x':'—',aml.velocity_ratio>20],
+    ['Drain Days',aml.daily_drain_days_count!=null?aml.daily_drain_days_count:'—',aml.daily_drain_flag],
+    ['Opaque Refs',aml.sanitised_references_pct!=null?aml.sanitised_references_pct+'%':'—',aml.sanitised_references_flag],
+  ];
+  return '<div class="card" style="border:2px solid '+rc.bord+'"><div class="ch" style="background:'+rc.bg+'"><h2 style="color:'+rc.c+'">⚠ AML / FICA Risk Assessment</h2><span style="font-size:13px;font-weight:800;color:'+rc.c+'">'+esc(aml.overall_rating||'—')+' RISK</span></div><div class="cb" style="background:'+rc.bg+'">'+
+    (aml.fica_recommendation?'<p style="font-size:13px;color:'+rc.c+';margin-bottom:12px;font-weight:600">'+esc(aml.fica_recommendation)+'</p>':'')+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">'+stats.map(function(s){return '<div style="background:white;border:1px solid '+rc.bord+';border-radius:8px;padding:8px 16px;text-align:center;min-width:80px"><div style="font-size:16px;font-weight:800;color:'+(s[2]?'#dc2626':'#059669')+'">'+esc(String(s[1]))+'</div><div style="font-size:10px;color:#6b7280">'+s[0]+'</div></div>';}).join('')+'</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px">'+indicators.map(function(ind){return '<div style="display:flex;align-items:center;gap:8px;background:'+(ind[1]?'#fee2e2':'white')+';border:1px solid '+(ind[1]?'#fca5a5':'#e5e7eb')+';border-radius:6px;padding:6px 10px"><span>'+(ind[1]?'🔴':'🟢')+'</span><span style="font-size:12px;color:'+(ind[1]?'#991b1b':'#6b7280')+'">'+ind[0]+'</span></div>';}).join('')+'</div>'+
+    (aml.structuring_notes?'<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;margin-top:10px;font-size:12px;color:#991b1b"><strong>Structuring detail:</strong> '+esc(aml.structuring_notes)+'</div>':'')+
+    (aml.split_round_number_examples&&aml.split_round_number_examples.length>0?'<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;padding:8px 12px;margin-top:8px;font-size:12px;color:#991b1b"><strong>Split transaction examples:</strong> '+esc(aml.split_round_number_examples.join(' | '))+'</div>':'')+
+    (aml.top_recipients&&aml.top_recipients.length>0?'<div style="margin-top:12px"><div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Top Outflow Recipients</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px">'+aml.top_recipients.map(function(rec){return '<div style="background:white;border:1px solid '+rc.bord+';border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:12px;font-weight:700;color:#1f2937">'+esc(rec.name||'')+'</div><div style="font-size:10px;color:#9ca3af">'+(rec.transaction_count||0)+' transactions</div></div><div style="font-size:12px;font-weight:700;color:'+(aml.counterparty_concentration_flag?'#dc2626':'#1f2937')+'">'+fmtR(rec.total_paid)+'</div></div>';}).join('')+'</div></div>':'')+
+    '</div></div>';
+}
+
+function renderBankDetailCard(bk,bankRaw){
+  if(!bk||!bk.available)return'';
+  var od=bk.overdraft||{};
+  var excesses=(bankRaw&&bankRaw.excesses)||[];
+  var debts=(bankRaw&&bankRaw.identified_debts)||[];
+  var hasAny=od.in_place||excesses.length>0||debts.length>0;
+  if(!hasAny)return'';
+  return '<div class="card"><div class="ch"><h2>Bank Account Detail</h2></div><div class="cb">'+
+    (od.in_place?'<div style="margin-bottom:14px"><div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:700">Overdraft Facility</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px">'+
+      [['Limit',fmtR(od.limit)],['Monthly Repayment',fmtR(od.monthly_repayment)],['Excess Interest Rate',od.excess_interest_rate_percent!=null?od.excess_interest_rate_percent+'% p.a.':'—'],['Times Breached',String(od.times_limit_breached||0)],['Max Breach',fmtR(od.max_breach_amount)]]
+      .map(function(x){return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px"><div style="font-size:10px;color:#6b7280;font-weight:600">'+x[0]+'</div><div style="font-size:13px;font-weight:700;color:#1f2937">'+x[1]+'</div></div>';}).join('')+
+      '</div>'+(od.breach_dates&&od.breach_dates.length>0?'<div style="font-size:11px;color:#6b7280;margin-top:6px">Breach dates: '+esc(od.breach_dates.join(', '))+'</div>':'')+'</div>':'')+
+    (excesses.length>0?'<div style="margin-bottom:14px"><div style="font-size:11px;color:#92400e;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:700">Excesses ('+excesses.length+')</div>'+
+      excesses.map(function(ex){return '<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #fef3c7;font-size:12px"><span style="color:#78350f">'+esc(ex.date||'')+' — '+esc(ex.description||'')+'</span><span style="color:#d97706;font-weight:700">'+fmtR(ex.amount)+'</span></div>';}).join('')+'</div>':'')+
+    (debts.length>0?'<div><div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;font-weight:700">Identified Debt Obligations</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">'+debts.map(function(d){return '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center"><div><div style="font-size:12px;font-weight:700;color:#1f2937">'+esc(d.lender||'')+'</div><div style="font-size:10px;color:#6b7280">'+esc(d.description||'')+(d.frequency?' · '+esc(d.frequency):'')+'</div>'+(d.missed_payments>0?'<div style="font-size:10px;color:#dc2626">⚠ '+d.missed_payments+' missed</div>':'')+'</div><div style="font-size:13px;font-weight:700;color:'+(d.missed_payments>0?'#dc2626':'var(--teal)')+'">'+fmtR(d.monthly_instalment)+'</div></div>';}).join('')+'</div></div>':'')+
+    '</div></div>';
+}
+
 function badge(s){return{green:'<span class="bdg bg">✓ Strong</span>',amber:'<span class="bdg ba">⚠ Marginal</span>',red:'<span class="bdg br">✕ Concern</span>',grey:'<span class="bdg bgr">— N/A</span>'}[s]||'<span class="bdg bgr">— N/A</span>';}
 
 var VINFO={
@@ -909,10 +1078,10 @@ function renderLoading(){
 
 function renderUpload(){
   var payout=parseFloat(S.payout)||0,tier=getTier(payout),ti=tier?TINFO[tier]:null;
-  return '<div class="card"><div class="ch"><h2>Deal Parameters</h2></div><div class="cb">'+
+  return '<div class="card sec-deal"><div class="ch"><h2>Deal Parameters</h2></div><div class="cb">'+
     '<div class="g2" style="margin-bottom:14px">'+
-    '<div class="fg"><label>Payout / Equipment Value (R) *</label><input type="number" value="'+esc(S.payout)+'" oninput="S.payout=this.value;render()" placeholder="e.g. 300000"></div>'+
-    '<div class="fg"><label>Monthly Rental (R) *</label><input type="number" value="'+esc(S.rental)+'" oninput="S.rental=this.value" placeholder="e.g. 8500"></div></div>'+
+    '<div class="fg"><label>Payout / Equipment Value (R) *</label><input type="text" inputmode="decimal" value="'+esc(S.payout)+'" oninput="S.payout=this.value.replace(/[^0-9.]/g,\'\');render()" placeholder="e.g. 300000"></div>'+
+    '<div class="fg"><label>Monthly Rental (R) *</label><input type="text" inputmode="decimal" value="'+esc(S.rental)+'" oninput="S.rental=this.value.replace(/[^0-9.]/g,\'\')" placeholder="e.g. 8500"></div></div>'+
     '<div class="fg"><label>Asset Type *</label><div class="tog">'+
     '<div class="topt '+(S.assetType==='non-income'?'on':'')+'" onclick="S.assetType=\'non-income\';render()"><div class="tl">'+(S.assetType==='non-income'?'●':'○')+' Non-Income Generating</div><div class="ts">Deal ≤10% of equity</div></div>'+
     '<div class="topt '+(S.assetType==='income'?'on':'')+'" onclick="S.assetType=\'income\';render()"><div class="tl">'+(S.assetType==='income'?'●':'○')+' Income Generating</div><div class="ts">Deal ≤30% of equity</div></div></div></div>'+
@@ -920,19 +1089,19 @@ function renderUpload(){
     (tier?'<div class="tbanner t'+tier+'"><div class="ttl">Tier '+tier+' — '+ti.label+'</div><div class="tds">'+ti.desc+'</div></div>':'')+
     '</div></div>'+
 
-    '<div class="card"><div class="ch"><h2>TransUnion CV4B Report *</h2><span style="font-size:11px;color:#6b7280">Required — all tiers</span></div><div class="cb">'+uzHtml('tu','','Full CV4B Business Information Report PDF',false)+'</div></div>'+
+    '<div class="card sec-monday"><div class="ch"><h2>Monday Deal Context</h2><span style="font-size:11px;color:#6b7280;background:#dbeafe;border-radius:4px;padding:2px 8px;font-weight:600">Optional — All Tiers</span></div><div class="cb" id="mon-body"></div></div>'+
 
-    '<div class="card"><div class="ch"><h2>Bank Statements '+(tier>=2?'*':'(optional)')+'</h2><span style="font-size:11px;color:#6b7280">'+(tier===2?'Required for Tier 2':tier===3?'Strongly preferred':'Optional for Tier 1')+'</span></div><div class="cb">'+uzHtml('bank','','3–6 months of bank statements',true)+'</div></div>'+
+    renderExposureSection()+
 
-    '<div class="card"><div class="ch"><h2>Financial Statements '+(tier===3?'*':'(optional)')+'</h2><span style="font-size:11px;color:#6b7280">'+(tier===3?'Required for Tier 3':'Optional')+'</span></div><div class="cb">'+
+    '<div class="card sec-tu"><div class="ch"><h2>TransUnion CV4B Report *</h2><span style="font-size:11px;color:#6b7280">Required — all tiers</span></div><div class="cb">'+uzHtml('tu','','Full CV4B Business Information Report PDF',false)+'</div></div>'+
+
+    '<div class="card sec-bank"><div class="ch"><h2>Bank Statements '+(tier>=2?'*':'(optional)')+'</h2><span style="font-size:11px;color:#6b7280">'+(tier===2?'Required for Tier 2':tier===3?'Strongly preferred':'Optional for Tier 1')+'</span></div><div class="cb">'+uzHtml('bank','','3–6 months of bank statements',true)+'</div></div>'+
+
+    '<div class="card sec-fin"><div class="ch"><h2>Financial Statements '+(tier===3?'*':'(optional)')+'</h2><span style="font-size:11px;color:#6b7280">'+(tier===3?'Required for Tier 3':'Optional')+'</span></div><div class="cb">'+
     uzHtml('finCur','Current Year AFS','Audited / reviewed / compiled financials',true)+
     uzHtml('finPri','Prior Year AFS (optional)','Separate prior year document',true)+
     uzHtml('manAccs','Management Accounts (optional)','Latest interim management accounts',true)+
     '</div></div>'+
-
-    renderExposureSection()+
-
-    '<div class="card"><div class="ch"><h2>Monday Deal Context</h2><span style="font-size:11px;color:#6b7280;background:#dbeafe;border-radius:4px;padding:2px 8px;font-weight:600">Optional — All Tiers</span></div><div class="cb" id="mon-body"></div></div>'+
 
     (S.error?'<div class="alr alr-r">'+esc(S.error)+'</div>':'')+
     (!S.apiKey?'<div class="alr alr-a">⚠ API key not set — <a href="#" onclick="showModal();return false" style="color:var(--teal)">click here to add it</a> before running analysis.</div>':'')+
@@ -942,7 +1111,7 @@ function renderUpload(){
 function renderExposureSection(){
   if(S.bounceSelected){
     var bc=S.bounceCount;
-    return '<div class="card"><div class="ch"><h2>CCF Existing Exposure</h2></div><div class="cb">'+
+    return '<div class="card sec-exposure"><div class="ch"><h2>CCF Existing Exposure</h2></div><div class="cb">'+
       '<div style="background:white;border:1px solid #c4b5fd;border-radius:8px;padding:14px">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">'+
       '<div><div style="font-size:11px;color:#7c3aed;font-weight:600;margin-bottom:2px">EXPOSURE</div>'+
@@ -998,14 +1167,14 @@ function renderExposureSection(){
       '<div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:8px">Or enter manually:</div>'+
       '<div class="g2" style="margin-bottom:10px">'+
       '<div class="fg"><label>Client Name</label><input type="text" id="man-name" value="'+esc(S.manName||'')+'" oninput="S.manName=this.value" placeholder="Client name"></div>'+
-      '<div class="fg"><label>Existing Exposure (R)</label><input type="number" id="man-npv" value="'+esc(S.manNpv||'')+'" oninput="S.manNpv=this.value" placeholder="0 if new client"></div>'+
+      '<div class="fg"><label>Existing Exposure (R)</label><input type="text" inputmode="decimal" id="man-npv" value="'+esc(S.manNpv||'')+'" oninput="S.manNpv=this.value.replace(/[^0-9.]/g,\'\')" placeholder="0 if new client"></div>'+
       '</div>'+
       '<button class="btn btn-p btn-s" onclick="confirmManualExposure()">Confirm</button>'+
       '</div>'+
       '<div style="font-size:11px;color:#9ca3af;text-align:right;margin-top:10px"><a href="#" onclick="S.bounceSelected=true;S.exposure={npv:0,count:0,clientName:S.entity||\'New client\'};render();return false" style="color:#9ca3af">Skip — new client, no existing exposure</a></div>';
   }
 
-  return '<div class="card"><div class="ch"><h2>CCF Existing Exposure</h2><span style="font-size:11px;color:#6b7280">All tiers — optional but recommended</span></div><div class="cb">'+
+  return '<div class="card sec-exposure"><div class="ch"><h2>CCF Existing Exposure</h2><span style="font-size:11px;color:#6b7280">All tiers — optional but recommended</span></div><div class="cb">'+
     '<p style="font-size:12px;color:#6b7280;margin-bottom:12px">Upload your Rental Suite Excel export to check existing exposure, or enter manually. Zero bounces on an existing account is a strong mitigant — can offset missing property on Tier 1.</p>'+
     body+
     '</div></div>';
@@ -1050,7 +1219,7 @@ function renderReview(){
     '<tr><td style="font-weight:600">TransUnion CV4B</td><td>✓ Analysed</td><td style="font-size:12px">Score '+(S.tuResult&&S.tuResult.c2_commercial||'—')+' · Age '+(S.tuResult&&S.tuResult.c1_age||'—')+'yr · Property: '+(tu.hasProperty?'Yes':'No')+' · '+(tu.isClean?'Clean':'Adverse noted')+'</td><td>'+badge(tuS)+'</td></tr>'+
     '<tr><td style="font-weight:600">CCF Existing Exposure</td><td>'+(ex.available?'✓ Checked':'— Not checked')+'</td><td style="font-size:12px">'+(ex.available?(ex.isExisting?fmtR(ex.npv)+' · Bounces: '+ex.bounceCount:'New client'):'Not completed')+'</td><td>'+badge(exS)+'</td></tr>'+
     '<tr><td style="font-weight:600">Financial Statements</td><td>'+(fi.available?'✓ Analysed':'— Not provided')+'</td><td style="font-size:12px">'+(fi.available?'EBITDA cov: '+(fi.ebitdaCoverage||'N/A')+'x · Equity: '+fmtR(fi.equity)+' · Deal: '+(fi.dealPct||'N/A')+'% of equity':'Not provided')+'</td><td>'+badge(fiS)+'</td></tr>'+
-    '<tr><td style="font-weight:600">Bank Statements</td><td>'+(bk.available?'✓ Analysed':'— Not provided')+'</td><td style="font-size:12px">'+(bk.available?'Conduct: '+bk.conduct+' · RDs: '+bk.rdCount+' · Coverage: '+(bk.coverage||'N/A')+'x':'Not provided')+'</td><td>'+badge(bkS)+'</td></tr>'+
+    '<tr><td style="font-weight:600">Bank Statements</td><td>'+(bk.available?'✓ Analysed':'— Not provided')+'</td><td style="font-size:12px">'+(bk.available?'Conduct: '+bk.conduct+' · RDs: '+bk.rdCount+' · Excesses: '+(bk.excessCount||0)+' · Coverage: '+(bk.coverage||'N/A')+'x'+(bk.aml?' · AML: '+bk.aml.overall_rating:''):'Not provided')+'</td><td>'+badge(bkS)+'</td></tr>'+
     '<tr><td style="font-weight:600">Monday Deal Context</td><td>'+(dl.available?'✓ Linked':'— Not linked')+'</td><td style="font-size:12px">'+(dl.available&&dl.summary.length>0?esc(dl.summary.join(' · ')):'Not linked')+'</td><td>'+badge(dlS)+'</td></tr>'+
     '</tbody></table></div></div>'+
 
@@ -1060,6 +1229,9 @@ function renderReview(){
     (vr.conditions.length>0?'<div style="margin-top:10px"><div style="font-size:12px;font-weight:700;color:'+vi.lc+';margin-bottom:5px">Conditions:</div><ul style="padding-left:18px">'+vr.conditions.map(function(c){return '<li style="font-size:13px;color:'+vi.lc+';margin-bottom:3px">'+esc(c)+'</li>';}).join('')+'</ul></div>':'')+
     (vr.declineReasons.length>0?'<div style="margin-top:10px"><div style="font-size:12px;font-weight:700;color:#991b1b;margin-bottom:5px">Decline Reasons:</div><ul style="padding-left:18px">'+vr.declineReasons.map(function(d){return '<li style="font-size:13px;color:#7f1d1d;margin-bottom:3px">'+esc(d)+'</li>';}).join('')+'</ul></div>':'')+
     '</div>'+
+
+    renderAmlPanel(bk)+
+    renderBankDetailCard(bk,S.bankResult)+
 
     (allF.length>0?'<div class="card"><div class="ch"><h2>All Risk Flags</h2></div><div class="cb">'+allF.map(function(f){return '<div class="fl f'+(f.level==='green'?'g2':f.level==='red'?'r':'a')+'"><span class="fsrc src-'+f.src.toLowerCase()+'">'+f.src+'</span><span class="ftx">'+esc(f.text)+'</span></div>';}).join('')+'</div></div>':'')+
 
@@ -1115,7 +1287,8 @@ function dlWord(){
     h2('4. TransUnion')+tbl(row('Commercial Score',S.tuResult&&S.tuResult.c2_commercial)+row('Trading Age',(S.tuResult&&S.tuResult.c1_age||'—')+' years',true)+row('Property',tu.hasProperty?'✓ Confirmed':'Not detected')+row('Overall Status',tu.hardDecline?'✕ HARD DECLINE':tu.isClean?'✓ CLEAN':'⚠ ADVERSE NOTED',true))+
     (allF.length>0?h2('5. All Risk Flags')+'<ul>'+allF.map(function(f){return '<li style="font-size:12px;color:'+(f.level==='red'?'#991b1b':f.level==='green'?'#065f46':'#92400e')+'">['+f.src+'] '+esc(f.text)+'</li>';}).join('')+'</ul>':'')+
     (fi.available?h2('6. Financial Statements')+tbl(row('Revenue',fmtR(fin&&fin.current&&fin.current.revenue))+row('EBITDA',fmtR(fin&&fin.current&&fin.current.ebitda),true)+row('EBITDA Coverage',(fi.ebitdaCoverage||'N/A')+'x')+row('Total Equity',fmtR(fi.equity),true)+row('Deal % of Equity',(fi.dealPct||'N/A')+'% (guideline ≤'+fi.eqThreshold+'%)')+row('Assurance',fin&&fin.assurance_level||'Unknown',true)):'')+
-    (bk.available?h2('7. Bank Statements')+tbl(row('Conduct',bk.conduct)+row('Returned Debits',String(bk.rdCount),true)+row('Avg Monthly Income',fmtR(bk.avgMonthly))+row('Income Coverage',(bk.coverage||'N/A')+'x',true)+row('Debt-to-Income',bk.dti!=null?(bk.dti*100).toFixed(1)+'%':'N/A')):'')+
+    (bk.available?h2('7. Bank Statements')+tbl(row('Conduct',bk.conduct)+row('Returned Debits',String(bk.rdCount),true)+row('Excesses',String(bk.excessCount||0))+row('Avg Monthly Income',fmtR(bk.avgMonthly),true)+row('Income Coverage',(bk.coverage||'N/A')+'x')+row('Debt-to-Income',bk.dti!=null?(bk.dti*100).toFixed(1)+'%':'N/A',true)+(bk.overdraft&&bk.overdraft.in_place?row('Overdraft Facility',fmtR(bk.overdraft.limit)+' — breached '+(bk.overdraft.times_limit_breached||0)+'x'):'')):'')+
+    (bk.available&&bk.aml?h2('7b. AML / FICA Risk Assessment')+'<p style="font-size:13px"><strong>Overall Rating: '+esc(bk.aml.overall_rating||'—')+'</strong></p>'+(bk.aml.fica_recommendation?'<p style="font-size:12px">'+esc(bk.aml.fica_recommendation)+'</p>':'')+'<ul>'+[['Pass-Through / Conduit Account',bk.aml.pass_through_flag],['Structuring',bk.aml.structuring_flag],['Sanitised / Opaque References',bk.aml.sanitised_references_flag],['Counterparty Concentration',bk.aml.counterparty_concentration_flag],['Split Round-Number Transactions',bk.aml.split_round_number_flag],['Commodity Cover Without Substance',bk.aml.commodity_cover_flag],['Daily Drain Pattern',bk.aml.daily_drain_flag]].filter(function(x){return x[1];}).map(function(x){return '<li style="font-size:12px;color:#991b1b">'+x[0]+'</li>';}).join('')+'</ul>':'')+
     '</body></html>';
   var blob=new Blob(['\ufeff',html],{type:'application/msword'});
   var url=URL.createObjectURL(blob);
@@ -1123,7 +1296,7 @@ function dlWord(){
 }
 
 // ── BOOT ───────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded',function(){render();});
+document.addEventListener('DOMContentLoaded',function(){updateApiKeyBtn();render();});
 </script>
 </body>
 </html>
