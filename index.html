@@ -1146,7 +1146,9 @@ function renderLoading(){
 
 function renderUpload(){
   var payout=parseFloat(S.payout)||0,tier=getTier(payout),ti=tier?TINFO[tier]:null;
-  return '<div class="card sec-deal"><div class="ch"><h2>Deal Parameters</h2></div><div class="cb">'+
+  return '<div class="card sec-monday"><div class="ch"><h2>Monday Deal Context</h2><span style="font-size:11px;color:#6b7280;background:#dbeafe;border-radius:4px;padding:2px 8px;font-weight:600">Optional — All Tiers</span></div><div class="cb" id="mon-body"></div></div>'+
+
+    '<div class="card sec-deal"><div class="ch"><h2>Deal Parameters</h2></div><div class="cb">'+
     '<div class="g2" style="margin-bottom:14px">'+
     '<div class="fg"><label>Payout / Equipment Value (R) *</label><input type="text" inputmode="decimal" value="'+esc(S.payout)+'" oninput="S.payout=this.value.replace(/[^0-9.]/g,\'\');render()" placeholder="e.g. 300000"></div>'+
     '<div class="fg"><label>Monthly Rental (R) *</label><input type="text" inputmode="decimal" value="'+esc(S.rental)+'" oninput="S.rental=this.value.replace(/[^0-9.]/g,\'\')" placeholder="e.g. 8500"></div></div>'+
@@ -1156,8 +1158,6 @@ function renderUpload(){
     '<div class="fg"><label>Entity / Applicant Name</label><input type="text" value="'+esc(S.entity)+'" oninput="S.entity=this.value" placeholder="e.g. SA Valuations (Pty) Ltd"></div>'+
     (tier?'<div class="tbanner t'+tier+'"><div class="ttl">Tier '+tier+' — '+ti.label+'</div><div class="tds">'+ti.desc+'</div></div>':'')+
     '</div></div>'+
-
-    '<div class="card sec-monday"><div class="ch"><h2>Monday Deal Context</h2><span style="font-size:11px;color:#6b7280;background:#dbeafe;border-radius:4px;padding:2px 8px;font-weight:600">Optional — All Tiers</span></div><div class="cb" id="mon-body"></div></div>'+
 
     renderExposureSection()+
 
